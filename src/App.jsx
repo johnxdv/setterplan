@@ -74,7 +74,7 @@ export default function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <h1>Kanban Appels</h1>
+        <h1>Espace de grind de Victor</h1>
         <div className="actions">
           <input
             ref={fileInput}

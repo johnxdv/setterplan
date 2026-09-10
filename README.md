@@ -1,4 +1,4 @@
-# Kanban Appels
+# Espace de grind de Victor
 
 Tableau kanban de prospection téléphonique : import CSV, 4 colonnes, glisser-déposer, sauvegarde locale.
 
