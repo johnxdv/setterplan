@@ -147,3 +147,30 @@ body {
   cursor: pointer;
 }
 .chip:hover { background: rgba(255, 255, 255, .07); }
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.status .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.status.online { color: #4ade80; border-color: #22c55e55; }
+.status.offline { color: #fbbf24; border-color: #f59e0b55; }
+.status.connecting { color: var(--muted); }
+
+.status.denied { color: #fca5a5; border-color: #ef444455; }

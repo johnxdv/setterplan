@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
+import { onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore'
 import { parseContacts } from './csv.js'
-
-const STORAGE_KEY = 'kanban-appels-v1'
+import { boardRef } from './firebase.js'
 
 const COLUMNS = [
   { id: 'todo', title: 'À appeler', accent: '#7dabff' },
@@ -10,30 +10,68 @@ const COLUMNS = [
   { id: 'dead', title: 'Mort', accent: '#fca5a5' },
 ]
 
-function loadCards() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return []
-    const parsed = JSON.parse(raw)
-    if (!Array.isArray(parsed)) return []
-    const ids = new Set(COLUMNS.map((c) => c.id))
-    return parsed
-      .filter((c) => c && typeof c.id === 'string')
-      .map((c) => ({ ...c, column: ids.has(c.column) ? c.column : 'todo' }))
-  } catch {
-    return []
-  }
+const COLUMN_IDS = new Set(COLUMNS.map((c) => c.id))
+
+function sanitize(raw) {
+  if (!Array.isArray(raw)) return []
+  return raw
+    .filter((c) => c && typeof c.id === 'string')
+    .map((c) => ({
+      id: c.id,
+      name: c.name || 'Sans nom',
+      phone: c.phone || '',
+      company: c.company || '',
+      email: c.email || '',
+      extras: Array.isArray(c.extras) ? c.extras : [],
+      column: COLUMN_IDS.has(c.column) ? c.column : 'todo',
+    }))
 }
 
 export default function App() {
-  const [cards, setCards] = useState(loadCards)
+  const [cards, setCards] = useState([])
+  const [status, setStatus] = useState('connecting') // connecting | online | offline | denied
   const [dragOver, setDragOver] = useState(null)
   const [error, setError] = useState('')
   const fileInput = useRef(null)
+  const cardsRef = useRef([])
+  const loadedRef = useRef(false)
+  const [loaded, setLoaded] = useState(false)
 
+  // Lecture temps réel : toute modification faite depuis un autre appareil
+  // arrive ici sans rechargement.
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(cards))
-  }, [cards])
+    const unsubscribe = onSnapshot(
+      boardRef,
+      { includeMetadataChanges: true },
+      (snap) => {
+        const next = snap.exists() ? sanitize(snap.data().cards) : []
+        cardsRef.current = next
+        setCards(next)
+        setStatus(snap.metadata.fromCache ? 'offline' : 'online')
+        if (!loadedRef.current) {
+          loadedRef.current = true
+          setLoaded(true)
+        }
+      },
+      (err) => {
+        setStatus(err?.code === 'permission-denied' ? 'denied' : 'offline')
+        if (!loadedRef.current) {
+          loadedRef.current = true
+          setLoaded(true)
+        }
+      }
+    )
+    return unsubscribe
+  }, [])
+
+  // Écriture : le document porte l'état complet du tableau.
+  function persist(next) {
+    cardsRef.current = next
+    setCards(next)
+    setDoc(boardRef, { cards: next, updatedAt: serverTimestamp() }).catch((err) => {
+      setStatus(err?.code === 'permission-denied' ? 'denied' : 'offline')
+    })
+  }
 
   async function handleFile(e) {
     const file = e.target.files?.[0]
@@ -44,7 +82,7 @@ export default function App() {
       if (contacts.length === 0) {
         setError('Aucune ligne exploitable dans ce fichier.')
       } else {
-        setCards((prev) => [...prev, ...contacts])
+        persist([...cardsRef.current, ...contacts])
       }
     } catch {
       setError('Impossible de lire ce fichier CSV.')
@@ -53,14 +91,13 @@ export default function App() {
   }
 
   function moveCard(id, column) {
-    setCards((prev) => prev.map((c) => (c.id === id ? { ...c, column } : c)))
+    persist(cardsRef.current.map((c) => (c.id === id ? { ...c, column } : c)))
   }
 
   function reset() {
-    if (cards.length === 0) return
+    if (cardsRef.current.length === 0) return
     if (confirm('Vider le tableau ? Toutes les cartes seront supprimées.')) {
-      setCards([])
-      localStorage.removeItem(STORAGE_KEY)
+      persist([])
     }
   }
 
@@ -76,6 +113,7 @@ export default function App() {
       <header className="topbar">
         <h1>Espace de grind de Victor</h1>
         <div className="actions">
+          <StatusPill status={status} />
           <input
             ref={fileInput}
             type="file"
@@ -93,13 +131,20 @@ export default function App() {
         </div>
       </header>
 
+      {status === 'denied' && (
+        <p className="error">
+          Firestore refuse l'accès au document <code>board/current</code> : les modifications
+          restent locales. Autorisez la lecture/écriture dans les règles de sécurité du projet.
+        </p>
+      )}
       {error && <p className="error">{error}</p>}
-      {cards.length === 0 && !error && (
+      {loaded && cards.length === 0 && !error && (
         <p className="hint">
           Importez un CSV (colonnes libres : nom, téléphone, entreprise, email, notes…) —
           chaque ligne devient une carte dans « À appeler ».
         </p>
       )}
+      {!loaded && <p className="hint">Chargement du tableau…</p>}
 
       <main className="board">
         {COLUMNS.map((col) => {
@@ -132,6 +177,29 @@ export default function App() {
         })}
       </main>
     </div>
+  )
+}
+
+function StatusPill({ status }) {
+  const label = {
+    online: 'En ligne',
+    offline: 'Hors ligne',
+    denied: 'Accès refusé',
+    connecting: 'Connexion…',
+  }[status]
+  const title = {
+    online: 'Synchronisé avec Firestore',
+    offline:
+      'Firestore est injoignable : le tableau affiché vient du cache local et vos changements seront envoyés au retour de la connexion.',
+    denied:
+      'Firestore refuse la lecture/écriture sur board/current. Vérifiez les règles de sécurité du projet.',
+    connecting: 'Connexion à Firestore…',
+  }[status]
+  return (
+    <span className={`status ${status}`} title={title} data-testid="status">
+      <span className="dot" />
+      {label}
+    </span>
   )
 }
 
