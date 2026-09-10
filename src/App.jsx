@@ -4,10 +4,10 @@ import { parseContacts } from './csv.js'
 const STORAGE_KEY = 'kanban-appels-v1'
 
 const COLUMNS = [
-  { id: 'todo', title: 'À appeler', accent: '#3b82f6' },
-  { id: 'booked', title: 'Rendez-vous booké', accent: '#16a34a' },
-  { id: 'followup', title: 'À relancer', accent: '#eab308' },
-  { id: 'dead', title: 'Mort', accent: '#dc2626' },
+  { id: 'todo', title: 'À appeler', accent: '#7dabff' },
+  { id: 'booked', title: 'Rendez-vous booké', accent: '#4ade80' },
+  { id: 'followup', title: 'À relancer', accent: '#fde047' },
+  { id: 'dead', title: 'Mort', accent: '#fca5a5' },
 ]
 
 function loadCards() {
