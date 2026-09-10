@@ -174,3 +174,77 @@ body {
 .status.connecting { color: var(--muted); }
 
 .status.denied { color: #fca5a5; border-color: #ef444455; }
+
+.relance {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  margin-top: 8px;
+  position: relative;
+}
+
+/* Champ natif invisible mais présent dans le flux : showPicker() s'y ancre. */
+.relance-input {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.relance-input.visible {
+  position: static;
+  width: auto;
+  height: auto;
+  opacity: 1;
+  pointer-events: auto;
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.relance-set,
+.relance-date,
+.relance-clear {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 9px;
+  border-radius: 6px;
+  border: 1px dashed #fde04780;
+  background: transparent;
+  color: #fde047;
+  cursor: pointer;
+}
+
+.relance-date {
+  flex: 1;
+  text-align: left;
+  border-style: solid;
+  background: #fde04718;
+}
+
+.relance-date.late {
+  border-color: #fca5a580;
+  background: #fca5a518;
+  color: #fca5a5;
+}
+
+.relance-set:hover,
+.relance-date:hover { background: rgba(255, 255, 255, .09); }
+
+.relance-clear {
+  border: 1px solid var(--line);
+  color: var(--muted);
+  padding: 4px 8px;
+  line-height: 1;
+}
+.relance-clear:hover { color: var(--ink); background: rgba(255, 255, 255, .07); }

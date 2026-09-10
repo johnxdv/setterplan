@@ -23,6 +23,7 @@ function sanitize(raw) {
       company: c.company || '',
       email: c.email || '',
       extras: Array.isArray(c.extras) ? c.extras : [],
+      followUpAt: typeof c.followUpAt === 'string' ? c.followUpAt : '',
       column: COLUMN_IDS.has(c.column) ? c.column : 'todo',
     }))
 }
@@ -94,6 +95,12 @@ export default function App() {
     persist(cardsRef.current.map((c) => (c.id === id ? { ...c, column } : c)))
   }
 
+  // La date reste attachée à la carte même si elle quitte « À relancer » :
+  // elle est simplement masquée ailleurs, et retrouvée si la carte revient.
+  function setFollowUp(id, value) {
+    persist(cardsRef.current.map((c) => (c.id === id ? { ...c, followUpAt: value } : c)))
+  }
+
   function reset() {
     if (cardsRef.current.length === 0) return
     if (confirm('Vider le tableau ? Toutes les cartes seront supprimées.')) {
@@ -148,7 +155,8 @@ export default function App() {
 
       <main className="board">
         {COLUMNS.map((col) => {
-          const list = cards.filter((c) => c.column === col.id)
+          let list = cards.filter((c) => c.column === col.id)
+          if (col.id === 'followup') list = sortByFollowUp(list)
           return (
             <section
               key={col.id}
@@ -169,7 +177,12 @@ export default function App() {
               </h2>
               <div className="cards">
                 {list.map((card) => (
-                  <Card key={card.id} card={card} onMove={moveCard} />
+                  <Card
+                    key={card.id}
+                    card={card}
+                    onMove={moveCard}
+                    onSetFollowUp={setFollowUp}
+                  />
                 ))}
               </div>
             </section>
@@ -203,7 +216,85 @@ function StatusPill({ status }) {
   )
 }
 
-function Card({ card, onMove }) {
+// Les dates sont stockées au format du champ natif (YYYY-MM-DDTHH:mm),
+// donc triables telles quelles en ordre lexicographique.
+function sortByFollowUp(list) {
+  return [...list].sort((a, b) => {
+    if (!a.followUpAt) return b.followUpAt ? 1 : 0
+    if (!b.followUpAt) return -1
+    return a.followUpAt.localeCompare(b.followUpAt)
+  })
+}
+
+function formatFollowUp(value) {
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return value
+  const p = (n) => String(n).padStart(2, '0')
+  return `Relance le ${p(d.getDate())}/${p(d.getMonth() + 1)} à ${p(d.getHours())}h${p(d.getMinutes())}`
+}
+
+function FollowUp({ card, onSet }) {
+  const inputRef = useRef(null)
+  const [fallback, setFallback] = useState(false)
+
+  function openPicker() {
+    const el = inputRef.current
+    if (!el) return
+    try {
+      if (typeof el.showPicker === 'function') {
+        el.showPicker()
+        return
+      }
+    } catch {
+      // showPicker() refusé (navigateur ancien, hors geste utilisateur)
+    }
+    // Repli : on affiche le champ natif en clair.
+    setFallback(true)
+    setTimeout(() => el.focus(), 0)
+  }
+
+  const late = card.followUpAt && new Date(card.followUpAt).getTime() < Date.now()
+
+  return (
+    <div className="relance">
+      <input
+        ref={inputRef}
+        type="datetime-local"
+        className={`relance-input ${fallback ? 'visible' : ''}`}
+        value={card.followUpAt || ''}
+        onChange={(e) => onSet(card.id, e.target.value)}
+        aria-label="Date et heure de relance"
+      />
+      {card.followUpAt ? (
+        <>
+          <button
+            type="button"
+            className={`relance-date ${late ? 'late' : ''}`}
+            onClick={openPicker}
+            title="Modifier la date de relance"
+          >
+            {formatFollowUp(card.followUpAt)}
+          </button>
+          <button
+            type="button"
+            className="relance-clear"
+            onClick={() => onSet(card.id, '')}
+            title="Effacer la relance"
+            aria-label="Effacer la relance"
+          >
+            ×
+          </button>
+        </>
+      ) : (
+        <button type="button" className="relance-set" onClick={openPicker}>
+          Fixer une relance
+        </button>
+      )}
+    </div>
+  )
+}
+
+function Card({ card, onMove, onSetFollowUp }) {
   return (
     <article
       className="card"
@@ -229,6 +320,9 @@ function Card({ card, onMove }) {
           <span className="label">{f.label} :</span> {f.value}
         </div>
       ))}
+      {card.column === 'followup' && (
+        <FollowUp card={card} onSet={onSetFollowUp} />
+      )}
       <div className="card-move">
         {COLUMNS.filter((c) => c.id !== card.column).map((c) => (
           <button
