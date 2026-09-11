@@ -88,6 +88,7 @@ export function parseContacts(text) {
       email: at(emailIdx),
       extras,
       followUpAt: '',
+      starred: false,
       column: 'todo',
     }
   })

@@ -24,6 +24,7 @@ function sanitize(raw) {
       email: c.email || '',
       extras: Array.isArray(c.extras) ? c.extras : [],
       followUpAt: typeof c.followUpAt === 'string' ? c.followUpAt : '',
+      starred: c.starred === true,
       column: COLUMN_IDS.has(c.column) ? c.column : 'todo',
     }))
 }
@@ -99,6 +100,12 @@ export default function App() {
   // elle est simplement masquée ailleurs, et retrouvée si la carte revient.
   function setFollowUp(id, value) {
     persist(cardsRef.current.map((c) => (c.id === id ? { ...c, followUpAt: value } : c)))
+  }
+
+  // L'étoile ne sert qu'à marquer la carte : elle ne change ni la colonne
+  // ni l'ordre d'affichage.
+  function toggleStar(id) {
+    persist(cardsRef.current.map((c) => (c.id === id ? { ...c, starred: !c.starred } : c)))
   }
 
   function reset() {
@@ -182,6 +189,7 @@ export default function App() {
                     card={card}
                     onMove={moveCard}
                     onSetFollowUp={setFollowUp}
+                    onToggleStar={toggleStar}
                   />
                 ))}
               </div>
@@ -294,7 +302,7 @@ function FollowUp({ card, onSet }) {
   )
 }
 
-function Card({ card, onMove, onSetFollowUp }) {
+function Card({ card, onMove, onSetFollowUp, onToggleStar }) {
   return (
     <article
       className="card"
@@ -307,6 +315,16 @@ function Card({ card, onMove, onSetFollowUp }) {
       }}
       onDragEnd={(e) => e.currentTarget.classList.remove('dragging')}
     >
+      <button
+        type="button"
+        className={`card-star ${card.starred ? 'on' : ''}`}
+        onClick={() => onToggleStar(card.id)}
+        aria-pressed={card.starred}
+        aria-label={card.starred ? 'Retirer l’étoile' : 'Mettre une étoile'}
+        title={card.starred ? 'Retirer l’étoile' : 'Mettre une étoile'}
+      >
+        {card.starred ? '★' : '☆'}
+      </button>
       <div className="card-name">{card.name}</div>
       {card.phone && (
         <a className="card-phone" href={`tel:${card.phone.replace(/[^+\d]/g, '')}`}>
