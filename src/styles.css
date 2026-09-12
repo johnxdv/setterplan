@@ -83,12 +83,14 @@ body {
   gap: 14px;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 900px) and (min-width: 769px) {
   .app { height: auto; min-height: 100vh; }
   .workspace { flex-direction: column; }
   .sidebar { flex: 0 0 auto; max-height: 42vh; }
   .board-columns { grid-template-columns: repeat(2, minmax(220px, 1fr)); }
 }
+
+.mobile-tabs { display: none; }
 
 /* Colonne de gauche */
 .sidebar {
@@ -211,6 +213,48 @@ body {
 .note-icon:hover { background: rgba(255, 255, 255, .07); }
 .note-icon.has-note { color: #7dabff; }
 
+/* Menu « Déplacer vers » : alternative au glisser-déposer, affiché
+   uniquement en dessous du seuil mobile (voir la media query 768px). */
+.move-menu-wrap { position: relative; display: none; }
+.move-menu-btn {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  padding: 3px 5px;
+  border-radius: 6px;
+}
+.move-menu-btn:hover { background: rgba(255, 255, 255, .07); }
+.move-menu {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  z-index: 5;
+  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  min-width: 180px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .4);
+}
+.move-menu-item {
+  font: inherit;
+  text-align: left;
+  padding: 8px 12px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+}
+.move-menu-item:last-child { border-bottom: 0; }
+.move-menu-item:hover { background: var(--surface-2); }
+
 .note-box {
   flex: 1 1 100%;
   margin-top: 6px;
@@ -307,3 +351,60 @@ body {
 }
 
 .cards { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+
+/* Mobile : une seule colonne visible à la fois, sélectionnée par la barre
+   d'onglets. Le glisser-déposer HTML5 étant peu fiable au doigt, chaque
+   contact affiche en plus un menu « Déplacer vers » (voir .move-menu).
+   Ce bloc doit rester en fin de fichier pour l'emporter sur les règles
+   desktop de même spécificité (.sidebar, .board-columns, etc.). */
+@media (max-width: 768px) {
+  .app { height: auto; min-height: 100vh; padding: 10px 12px; display: flex; }
+
+  .mobile-tabs {
+    display: flex;
+    flex: none;
+    gap: 6px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 2px;
+  }
+  .mobile-tab {
+    flex: none;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 700;
+    white-space: nowrap;
+    padding: 10px 14px;
+    min-height: 44px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: var(--surface-2);
+    color: var(--muted);
+  }
+  .mobile-tab.active { background: #3b6fe0; border-color: #3b6fe0; color: #fff; }
+
+  .workspace { flex-direction: column; }
+
+  .board-columns { display: contents; }
+  .sidebar, .column { display: none; width: 100%; flex: 1 1 auto; max-height: none; }
+  .workspace[data-active-tab="todo"] > .sidebar,
+  .workspace[data-active-tab="no_answer"] .column.no_answer,
+  .workspace[data-active-tab="followup"] .column.followup,
+  .workspace[data-active-tab="dead"] .column.dead,
+  .workspace[data-active-tab="booked"] .column.booked {
+    display: flex;
+  }
+
+  /* Zones tactiles confortables : au moins 44px, texte plus grand. */
+  .contact-row-main { padding: 4px 0; min-height: 44px; }
+  .contact-company { font-size: 15px; }
+  .contact-phone { font-size: 15px; }
+  .star-btn, .note-icon, .move-menu-btn {
+    min-width: 44px;
+    min-height: 44px;
+    font-size: 18px;
+  }
+  .note-close { min-height: 44px; padding: 10px 16px; }
+  .move-menu-item { min-height: 44px; font-size: 14px; }
+  .move-menu-wrap { display: inline-flex; }
+}

@@ -94,6 +94,7 @@ export default function App() {
   const [loaded, setLoaded] = useState(false)
   const [cityFilter, setCityFilter] = useState('')
   const [dragOverId, setDragOverId] = useState(null)
+  const [activeTab, setActiveTab] = useState('todo')
   const fileInput = useRef(null)
   const cardsRef = useRef([])
   const loadedRef = useRef(false)
@@ -240,24 +241,48 @@ export default function App() {
       {!loaded ? (
         <p className="hint">Chargement du tableau…</p>
       ) : (
-        <main className="workspace">
-          <TodoList
-            cards={todoCards}
-            cities={cities}
-            cityFilter={cityFilter}
-            onCityFilterChange={setCityFilter}
-            onToggleStar={toggleStar}
-            onSetNote={setNote}
-          />
-          <BoardColumns
-            cards={cards}
-            dragOverId={dragOverId}
-            setDragOverId={setDragOverId}
-            onDropTo={onDropTo}
-            onToggleStar={toggleStar}
-            onSetNote={setNote}
-          />
-        </main>
+        <>
+          <nav className="mobile-tabs">
+            <button
+              type="button"
+              className={`mobile-tab ${activeTab === 'todo' ? 'active' : ''}`}
+              onClick={() => setActiveTab('todo')}
+            >
+              À appeler <span className="badge">{todoCards.length}</span>
+            </button>
+            {COLUMNS.map((col) => (
+              <button
+                key={col.id}
+                type="button"
+                className={`mobile-tab ${activeTab === col.id ? 'active' : ''}`}
+                onClick={() => setActiveTab(col.id)}
+              >
+                {col.title}{' '}
+                <span className="badge">{cards.filter((c) => c.column === col.id).length}</span>
+              </button>
+            ))}
+          </nav>
+          <main className="workspace" data-active-tab={activeTab}>
+            <TodoList
+              cards={todoCards}
+              cities={cities}
+              cityFilter={cityFilter}
+              onCityFilterChange={setCityFilter}
+              onToggleStar={toggleStar}
+              onSetNote={setNote}
+              onMoveCard={moveCard}
+            />
+            <BoardColumns
+              cards={cards}
+              dragOverId={dragOverId}
+              setDragOverId={setDragOverId}
+              onDropTo={onDropTo}
+              onToggleStar={toggleStar}
+              onSetNote={setNote}
+              onMoveCard={moveCard}
+            />
+          </main>
+        </>
       )}
     </div>
   )
@@ -384,9 +409,9 @@ function DetailRow({ label, value }) {
 
 // Colonne de gauche : liste compacte, pas de cartes, pas de zone de dépôt
 // (aucun onDragOver/onDrop ici) — on ne peut qu'en faire sortir des contacts.
-function TodoList({ cards, cities, cityFilter, onCityFilterChange, onToggleStar, onSetNote }) {
+function TodoList({ cards, cities, cityFilter, onCityFilterChange, onToggleStar, onSetNote, onMoveCard }) {
   return (
-    <aside className="sidebar">
+    <aside className="sidebar" data-tab="todo">
       <div className="sidebar-header">
         <h2>
           À appeler <span className="badge">{cards.length}</span>
@@ -408,7 +433,7 @@ function TodoList({ cards, cities, cityFilter, onCityFilterChange, onToggleStar,
           <p className="sidebar-empty">Aucun contact{cityFilter ? ' pour cette ville' : ''}.</p>
         )}
         {cards.map((card) => (
-          <ContactRow key={card.id} card={card} onToggleStar={onToggleStar} onSetNote={onSetNote} />
+          <ContactRow key={card.id} card={card} onToggleStar={onToggleStar} onSetNote={onSetNote} onMoveCard={onMoveCard} />
         ))}
       </div>
     </aside>
@@ -419,9 +444,17 @@ function TodoList({ cards, cities, cityFilter, onCityFilterChange, onToggleStar,
 // catégories fixes : liste compacte (entreprise, gérant, téléphone) qui se
 // déplie au clic pour révéler le détail et la note. Seul le conteneur qui
 // l'accueille (et donc la colonne de destination au drop) change.
-function ContactRow({ card, onToggleStar, onSetNote }) {
+function ContactRow({ card, onToggleStar, onSetNote, onMoveCard }) {
   const [expanded, setExpanded] = useState(false)
+  const [moveMenuOpen, setMoveMenuOpen] = useState(false)
   const hasDetail = card.address || card.ville || card.website || card.extras.length > 0
+
+  useEffect(() => {
+    if (!moveMenuOpen) return
+    const close = () => setMoveMenuOpen(false)
+    document.addEventListener('click', close)
+    return () => document.removeEventListener('click', close)
+  }, [moveMenuOpen])
 
   return (
     <div
@@ -461,6 +494,33 @@ function ContactRow({ card, onToggleStar, onSetNote }) {
         <span className="contact-row-tools">
           <StarButton starred={card.starred} onClick={(e) => { e.stopPropagation(); onToggleStar(card.id) }} />
           <NoteField card={card} onSetNote={onSetNote} />
+          {onMoveCard && (
+            <span className="move-menu-wrap">
+              <button
+                type="button"
+                className="move-menu-btn"
+                onClick={(e) => { e.stopPropagation(); setMoveMenuOpen((v) => !v) }}
+                aria-label="Déplacer vers"
+                title="Déplacer vers"
+              >
+                ⋯
+              </button>
+              {moveMenuOpen && (
+                <div className="move-menu" onClick={(e) => e.stopPropagation()}>
+                  {COLUMNS.map((col) => (
+                    <button
+                      key={col.id}
+                      type="button"
+                      className="move-menu-item"
+                      onClick={() => { onMoveCard(card.id, col.id); setMoveMenuOpen(false) }}
+                    >
+                      {col.title}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </span>
+          )}
         </span>
       </div>
       {expanded && (
@@ -484,7 +544,7 @@ function ContactRow({ card, onToggleStar, onSetNote }) {
 // Les 4 colonnes fixes : uniquement des zones de dépôt, ne bougent jamais.
 // Chaque contact y est affiché avec le même ContactRow que « À appeler » ;
 // on le reclasse par glisser-déposer d'une colonne à l'autre.
-function BoardColumns({ cards, dragOverId, setDragOverId, onDropTo, onToggleStar, onSetNote }) {
+function BoardColumns({ cards, dragOverId, setDragOverId, onDropTo, onToggleStar, onSetNote, onMoveCard }) {
   return (
     <div className="board-columns">
       {COLUMNS.map((col) => {
@@ -505,6 +565,7 @@ function BoardColumns({ cards, dragOverId, setDragOverId, onDropTo, onToggleStar
             }}
             onDrop={(e) => onDropTo(e, col.id)}
             data-testid={`col-${col.id}`}
+            data-tab={col.id}
           >
             <h2 className="column-title">
               {col.title} <span className="badge">{list.length}</span>
@@ -512,7 +573,7 @@ function BoardColumns({ cards, dragOverId, setDragOverId, onDropTo, onToggleStar
             <div className="cards">
               {list.length === 0 && <p className="column-empty">Vide</p>}
               {list.map((card) => (
-                <ContactRow key={card.id} card={card} onToggleStar={onToggleStar} onSetNote={onSetNote} />
+                <ContactRow key={card.id} card={card} onToggleStar={onToggleStar} onSetNote={onSetNote} onMoveCard={onMoveCard} />
               ))}
             </div>
           </section>
