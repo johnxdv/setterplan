@@ -490,7 +490,15 @@ function ContactRow({ card, onToggleStar, onSetNote, onMoveCard }) {
       >
         <span className="contact-company">{card.company}</span>
         <span className="contact-gerant">{card.gerant || '—'}</span>
-        <span className="contact-phone">{card.phone}</span>
+        {card.phone && (
+          <a
+            className="contact-phone"
+            href={`tel:${card.phone.replace(/[^\d+]/g, '')}`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {card.phone}
+          </a>
+        )}
         <span className="contact-row-tools">
           <StarButton starred={card.starred} onClick={(e) => { e.stopPropagation(); onToggleStar(card.id) }} />
           <NoteField card={card} onSetNote={onSetNote} />
