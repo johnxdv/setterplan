@@ -307,11 +307,28 @@ function StarButton({ starred, onClick }) {
 // même liste), la sauvegarde Firestore est débouncée pour ne pas ralentir la
 // frappe, et systématiquement vidée au blur.
 function NoteField({ card, onSetNote }) {
-  const [open, setOpen] = useState(false)
+  // Repliée par défaut si la note est vide, dépliée d'emblée si elle contient
+  // déjà du texte. Cet état par défaut se réévalue à chaque montage (donc au
+  // rechargement de la page, ou quand un contact change de colonne) ainsi
+  // que si la note passe de vide à remplie pendant que le champ reste monté
+  // (mise à jour Firestore venue d'un autre appareil).
+  const [open, setOpen] = useState(Boolean(card.note))
   const [text, setText] = useState(card.note || '')
+  const manualOpenRef = useRef(false)
   const timerRef = useRef(null)
 
   useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current) }, [])
+
+  useEffect(() => {
+    if (!open && card.note) {
+      setText(card.note)
+      setOpen(true)
+    }
+    // N'observe que card.note : si l'utilisateur referme une note déjà
+    // remplie, elle ne doit pas se rouvrir tant que son contenu ne change
+    // pas réellement (donc pas de dépendance sur `open`).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [card.note])
 
   function flush(value) {
     if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null }
@@ -330,7 +347,7 @@ function NoteField({ card, onSetNote }) {
       <button
         type="button"
         className={`note-icon ${card.note ? 'has-note' : ''}`}
-        onClick={(e) => { e.stopPropagation(); setOpen(true) }}
+        onClick={(e) => { e.stopPropagation(); manualOpenRef.current = true; setOpen(true) }}
         title={card.note ? 'Voir / modifier la note' : 'Ajouter une note'}
         aria-label={card.note ? 'Voir / modifier la note' : 'Ajouter une note'}
       >
@@ -348,9 +365,9 @@ function NoteField({ card, onSetNote }) {
         onBlur={() => flush(text)}
         placeholder="Écrire une note…"
         rows={3}
-        autoFocus
+        autoFocus={manualOpenRef.current}
       />
-      <button type="button" className="note-close" onClick={() => { flush(text); setOpen(false) }}>
+      <button type="button" className="note-close" onClick={() => { flush(text); manualOpenRef.current = false; setOpen(false) }}>
         Fermer
       </button>
     </div>
