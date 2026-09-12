@@ -421,6 +421,14 @@ function ContactRow({ card, onToggleStar, onSetNote }) {
         tabIndex={0}
         onClick={() => setExpanded((v) => !v)}
         onKeyDown={(e) => {
+          // Ce gestionnaire est sur la ligne entière (role="button") mais la
+          // zone de note est un descendant : sans ce garde-fou, taper dans le
+          // textarea (espace, entrée…) remonte jusqu'ici et se ferait
+          // intercepter avant d'atteindre le champ. On laisse passer toute
+          // touche tapée depuis un champ de saisie actif.
+          const el = document.activeElement
+          const isTyping = el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)
+          if (isTyping) return
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault()
             setExpanded((v) => !v)
