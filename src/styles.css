@@ -145,18 +145,19 @@ body {
   margin: 0;
 }
 
-/* Ligne de contact compacte dans « À appeler » */
-.todo-row {
+/* Ligne de contact compacte : composant unique, partagé entre « À appeler »
+   et les 4 catégories fixes. */
+.contact-row {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface-2);
   padding: 8px 10px;
   cursor: grab;
 }
-.todo-row:active { cursor: grabbing; }
-.todo-row.dragging { opacity: .4; }
+.contact-row:active { cursor: grabbing; }
+.contact-row.dragging { opacity: .4; }
 
-.todo-row-main {
+.contact-row-main {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -164,7 +165,7 @@ body {
   cursor: pointer;
 }
 
-.todo-company {
+.contact-company {
   font-weight: 700;
   flex: 1 1 120px;
   min-width: 0;
@@ -172,7 +173,7 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.todo-gerant {
+.contact-gerant {
   color: var(--muted);
   font-size: 13px;
   max-width: 130px;
@@ -180,9 +181,9 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.todo-phone { font-weight: 800; font-size: 14px; white-space: nowrap; }
+.contact-phone { font-weight: 800; font-size: 14px; white-space: nowrap; }
 
-.todo-row-tools { display: flex; align-items: center; gap: 2px; margin-left: auto; }
+.contact-row-tools { display: flex; align-items: center; gap: 2px; margin-left: auto; }
 
 .star-btn {
   border: 0;
@@ -209,21 +210,6 @@ body {
 }
 .note-icon:hover { background: rgba(255, 255, 255, .07); }
 .note-icon.has-note { color: #7dabff; }
-
-.note-link {
-  display: block;
-  font: inherit;
-  font-size: 12px;
-  font-weight: 700;
-  color: #7dabff;
-  background: transparent;
-  border: 0;
-  padding: 4px 0;
-  margin-top: 6px;
-  cursor: pointer;
-  text-align: left;
-}
-.note-link:hover { text-decoration: underline; }
 
 .note-box {
   flex: 1 1 100%;
@@ -256,7 +242,7 @@ body {
 }
 .note-close:hover { color: var(--ink); background: rgba(255, 255, 255, .07); }
 
-.todo-detail {
+.contact-detail {
   margin-top: 8px;
   padding-top: 8px;
   border-top: 1px dashed var(--line);
@@ -267,7 +253,7 @@ body {
   gap: 4px;
 }
 .detail-row .detail-label { font-weight: 600; color: #aeb9d6; }
-.todo-detail a { color: #7dabff; }
+.contact-detail a { color: #7dabff; }
 
 /* Colonnes fixes de droite */
 .board-columns {
@@ -321,51 +307,3 @@ body {
 }
 
 .cards { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
-
-.card {
-  position: relative;
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, .45);
-  padding: 12px;
-  cursor: grab;
-}
-.card:active { cursor: grabbing; }
-.card.dragging { opacity: .4; }
-
-.card .star-btn { position: absolute; top: 6px; right: 6px; }
-
-.card-name { font-size: 17px; font-weight: 700; color: var(--ink); padding-right: 24px; }
-
-.card-phone {
-  display: block;
-  margin: 6px 0 4px;
-  font-size: clamp(18px, 1.7vw, 26px);
-  font-weight: 800;
-  letter-spacing: .01em;
-  white-space: nowrap;
-  color: #ffffff;
-  text-decoration: none;
-  line-height: 1.15;
-}
-
-.card-company { font-size: 15px; font-weight: 600; color: #c3cde6; }
-
-.card-extra { font-size: 13px; color: var(--muted); margin-top: 3px; word-break: break-word; }
-.card-extra .label { font-weight: 600; color: #aeb9d6; }
-.card-extra a { color: #7dabff; }
-
-.card-move { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
-
-.chip {
-  font: inherit;
-  font-size: 11px;
-  font-weight: 600;
-  padding: 3px 8px;
-  border-radius: 999px;
-  border: 1px solid;
-  background: transparent;
-  cursor: pointer;
-}
-.chip:hover { background: rgba(255, 255, 255, .07); }

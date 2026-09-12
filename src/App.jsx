@@ -6,10 +6,10 @@ import { boardRef } from './firebase.js'
 // Colonnes fixes de droite : zones de dépôt permanentes. « À appeler » n'en
 // fait pas partie : c'est une liste, pas une colonne (voir TodoList).
 const COLUMNS = [
-  { id: 'no_answer', title: "N'a pas répondu", accent: '#fb923c' },
-  { id: 'followup', title: 'Relance nécessaire', accent: '#fde047' },
-  { id: 'dead', title: 'Mort', accent: '#fca5a5' },
-  { id: 'booked', title: 'Rendez-vous booké', accent: '#4ade80' },
+  { id: 'no_answer', title: "N'a pas répondu" },
+  { id: 'followup', title: 'Relance nécessaire' },
+  { id: 'dead', title: 'Mort' },
+  { id: 'booked', title: 'Rendez-vous booké' },
 ]
 
 const COLUMN_IDS = new Set(['todo', ...COLUMNS.map((c) => c.id)])
@@ -24,6 +24,13 @@ const normLabel = (s) =>
 function normalizeUrl(url) {
   const trimmed = url.trim()
   return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`
+}
+
+// Clé de rapprochement pour la déduplication à l'import CSV : même entreprise
+// et même téléphone (accents/casse/espaces ignorés côté nom, non-chiffres
+// ignorés côté téléphone) désignent le même contact.
+function contactKey(company, phone) {
+  return `${normLabel(company || '')}|${(phone || '').replace(/\D/g, '')}`
 }
 
 // Accepte aussi bien les cartes déjà stockées avec l'ancien schéma (name /
@@ -135,7 +142,14 @@ export default function App() {
       if (contacts.length === 0) {
         setError('Aucune ligne exploitable dans ce fichier.')
       } else {
-        persist([...cardsRef.current, ...contacts])
+        // Le nouvel import remplace entièrement « À appeler ». Les contacts
+        // déjà classés dans une des 4 catégories fixes ne sont jamais
+        // touchés, et un contact du CSV qui les matche (même entreprise +
+        // même téléphone) n'est pas réintroduit en double dans « À appeler ».
+        const classified = cardsRef.current.filter((c) => c.column !== 'todo')
+        const classifiedKeys = new Set(classified.map((c) => contactKey(c.company, c.phone)))
+        const fresh = contacts.filter((c) => !classifiedKeys.has(contactKey(c.company, c.phone)))
+        persist([...classified, ...fresh])
       }
     } catch {
       setError('Impossible de lire ce fichier CSV.')
@@ -237,7 +251,6 @@ export default function App() {
             dragOverId={dragOverId}
             setDragOverId={setDragOverId}
             onDropTo={onDropTo}
-            onMove={moveCard}
             onToggleStar={toggleStar}
             onSetNote={setNote}
           />
@@ -269,11 +282,11 @@ function StatusPill({ status }) {
   )
 }
 
-function StarButton({ starred, onClick, className = '' }) {
+function StarButton({ starred, onClick }) {
   return (
     <button
       type="button"
-      className={`star-btn ${starred ? 'on' : ''} ${className}`}
+      className={`star-btn ${starred ? 'on' : ''}`}
       onClick={onClick}
       aria-pressed={starred}
       aria-label={starred ? "Retirer l'étoile" : 'Mettre une étoile'}
@@ -284,13 +297,13 @@ function StarButton({ starred, onClick, className = '' }) {
   )
 }
 
-// Icône/lien de note repliée par défaut. Reste ouverte tant que l'utilisateur
-// ne clique pas explicitement sur « Fermer » — jamais de fermeture au clic
+// Icône de note repliée par défaut. Reste ouverte tant que l'utilisateur ne
+// clique pas explicitement sur « Fermer » — jamais de fermeture au clic
 // ailleurs. L'état ouvert/fermé et le texte en cours de frappe vivent en
 // state local (le composant reste monté tant que le contact reste dans la
 // même liste), la sauvegarde Firestore est débouncée pour ne pas ralentir la
 // frappe, et systématiquement vidée au blur.
-function NoteField({ card, onSetNote, variant = 'icon' }) {
+function NoteField({ card, onSetNote }) {
   const [open, setOpen] = useState(false)
   const [text, setText] = useState(card.note || '')
   const timerRef = useRef(null)
@@ -310,17 +323,6 @@ function NoteField({ card, onSetNote, variant = 'icon' }) {
   }
 
   if (!open) {
-    if (variant === 'label') {
-      return (
-        <button
-          type="button"
-          className="note-link"
-          onClick={(e) => { e.stopPropagation(); setOpen(true) }}
-        >
-          {card.note ? '🗒️ Note' : '📝 Ajouter une note'}
-        </button>
-      )
-    }
     return (
       <button
         type="button"
@@ -386,20 +388,24 @@ function TodoList({ cards, cities, cityFilter, onCityFilterChange, onToggleStar,
           <p className="sidebar-empty">Aucun contact{cityFilter ? ' pour cette ville' : ''}.</p>
         )}
         {cards.map((card) => (
-          <TodoRow key={card.id} card={card} onToggleStar={onToggleStar} onSetNote={onSetNote} />
+          <ContactRow key={card.id} card={card} onToggleStar={onToggleStar} onSetNote={onSetNote} />
         ))}
       </div>
     </aside>
   )
 }
 
-function TodoRow({ card, onToggleStar, onSetNote }) {
+// Composant d'affichage unique, partagé entre « À appeler » et les 4
+// catégories fixes : liste compacte (entreprise, gérant, téléphone) qui se
+// déplie au clic pour révéler le détail et la note. Seul le conteneur qui
+// l'accueille (et donc la colonne de destination au drop) change.
+function ContactRow({ card, onToggleStar, onSetNote }) {
   const [expanded, setExpanded] = useState(false)
   const hasDetail = card.address || card.ville || card.website || card.extras.length > 0
 
   return (
     <div
-      className="todo-row"
+      className="contact-row"
       draggable
       data-card-id={card.id}
       onDragStart={(e) => {
@@ -410,7 +416,7 @@ function TodoRow({ card, onToggleStar, onSetNote }) {
       onDragEnd={(e) => e.currentTarget.classList.remove('dragging')}
     >
       <div
-        className="todo-row-main"
+        className="contact-row-main"
         role="button"
         tabIndex={0}
         onClick={() => setExpanded((v) => !v)}
@@ -421,16 +427,16 @@ function TodoRow({ card, onToggleStar, onSetNote }) {
           }
         }}
       >
-        <span className="todo-company">{card.company}</span>
-        <span className="todo-gerant">{card.gerant || '—'}</span>
-        <span className="todo-phone">{card.phone}</span>
-        <span className="todo-row-tools">
+        <span className="contact-company">{card.company}</span>
+        <span className="contact-gerant">{card.gerant || '—'}</span>
+        <span className="contact-phone">{card.phone}</span>
+        <span className="contact-row-tools">
           <StarButton starred={card.starred} onClick={(e) => { e.stopPropagation(); onToggleStar(card.id) }} />
           <NoteField card={card} onSetNote={onSetNote} />
         </span>
       </div>
       {expanded && (
-        <div className="todo-detail">
+        <div className="contact-detail">
           {card.address && <DetailRow label="Adresse" value={card.address} />}
           {card.ville && <DetailRow label="Ville" value={card.ville} />}
           {card.website && (
@@ -448,7 +454,9 @@ function TodoRow({ card, onToggleStar, onSetNote }) {
 }
 
 // Les 4 colonnes fixes : uniquement des zones de dépôt, ne bougent jamais.
-function BoardColumns({ cards, dragOverId, setDragOverId, onDropTo, onMove, onToggleStar, onSetNote }) {
+// Chaque contact y est affiché avec le même ContactRow que « À appeler » ;
+// on le reclasse par glisser-déposer d'une colonne à l'autre.
+function BoardColumns({ cards, dragOverId, setDragOverId, onDropTo, onToggleStar, onSetNote }) {
   return (
     <div className="board-columns">
       {COLUMNS.map((col) => {
@@ -474,66 +482,12 @@ function BoardColumns({ cards, dragOverId, setDragOverId, onDropTo, onMove, onTo
             <div className="cards">
               {list.length === 0 && <p className="column-empty">Vide</p>}
               {list.map((card) => (
-                <FixedCard key={card.id} card={card} onMove={onMove} onToggleStar={onToggleStar} onSetNote={onSetNote} />
+                <ContactRow key={card.id} card={card} onToggleStar={onToggleStar} onSetNote={onSetNote} />
               ))}
             </div>
           </section>
         )
       })}
     </div>
-  )
-}
-
-function FixedCard({ card, onMove, onToggleStar, onSetNote }) {
-  return (
-    <article
-      className="card"
-      draggable
-      data-card-id={card.id}
-      onDragStart={(e) => {
-        e.dataTransfer.setData('text/plain', card.id)
-        e.dataTransfer.effectAllowed = 'move'
-        e.currentTarget.classList.add('dragging')
-      }}
-      onDragEnd={(e) => e.currentTarget.classList.remove('dragging')}
-    >
-      <StarButton starred={card.starred} onClick={() => onToggleStar(card.id)} className="card-star" />
-      <div className="card-name">{card.company}</div>
-      {card.phone && (
-        <a className="card-phone" href={`tel:${card.phone.replace(/[^+\d]/g, '')}`}>
-          {card.phone}
-        </a>
-      )}
-      {card.gerant && <div className="card-company">{card.gerant}</div>}
-      {card.ville && <div className="card-extra"><span className="label">Ville :</span> {card.ville}</div>}
-      {card.address && <div className="card-extra"><span className="label">Adresse :</span> {card.address}</div>}
-      {card.website && (
-        <div className="card-extra">
-          <span className="label">Site :</span>{' '}
-          <a href={normalizeUrl(card.website)} target="_blank" rel="noreferrer">{card.website}</a>
-        </div>
-      )}
-      {card.extras.map((f) => (
-        <div className="card-extra" key={f.label}>
-          <span className="label">{f.label} :</span> {f.value}
-        </div>
-      ))}
-
-      <NoteField card={card} onSetNote={onSetNote} variant="label" />
-
-      <div className="card-move">
-        {COLUMNS.filter((c) => c.id !== card.column).map((c) => (
-          <button
-            key={c.id}
-            className="chip"
-            style={{ borderColor: c.accent, color: c.accent }}
-            onClick={() => onMove(card.id, c.id)}
-            title={`Déplacer vers « ${c.title} »`}
-          >
-            {c.title}
-          </button>
-        ))}
-      </div>
-    </article>
   )
 }
