@@ -205,7 +205,7 @@ export default function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <h1>Espace de grind de Victor</h1>
+        <h1>Road to 1M de Victor</h1>
         <div className="actions">
           <StatusPill status={status} />
           <input

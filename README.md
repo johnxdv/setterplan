@@ -1,4 +1,4 @@
-# Espace de grind de Victor
+# Road to 1M de Victor
 
 Espace de travail pour setter : import CSV, liste « À appeler » filtrable par
 ville, 4 colonnes de classement, notes par contact, synchronisation temps réel
