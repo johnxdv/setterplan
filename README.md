@@ -1,6 +1,8 @@
 # Espace de grind de Victor
 
-Tableau kanban de prospection téléphonique : import CSV, 4 colonnes, glisser-déposer, sauvegarde locale.
+Espace de travail pour setter : import CSV, liste « À appeler » filtrable par
+ville, 4 colonnes de classement, notes par contact, synchronisation temps réel
+entre appareils via Firestore.
 
 ## Démarrer
 
@@ -11,31 +13,45 @@ npm run dev
 
 ## Utilisation
 
-1. **Importer un CSV** — chaque ligne devient une carte dans « À appeler ».
-   Les colonnes sont libres : le nom, le téléphone, l'entreprise et l'email sont
-   détectés automatiquement (`Nom`/`Contact`, `Téléphone`/`Mobile`/`Tel`,
-   `Entreprise`/`Société`, `Email`…). Toute autre colonne est affichée sur la carte
-   sous forme `Libellé : valeur`. Séparateur `,` `;` ou tabulation détecté automatiquement.
-2. **Déplacer une carte** par glisser-déposer (drag & drop HTML5 natif) vers
-   « Rendez-vous booké » (vert), « À relancer » (jaune) ou « Mort » (rouge).
-   Les petites pastilles sous chaque carte font la même chose en un clic.
-3. **Relance datée** — sur les cartes de la colonne « À relancer », un bouton
-   « Fixer une relance » ouvre le sélecteur date/heure natif ; une fois définie,
-   la date s'affiche en clair sur la carte (« Relance le 15/09 à 09h05 ») et vire
-   au rouge quand elle est dépassée. La colonne est triée par échéance la plus
-   proche, cartes sans date en dernier. Le « × » efface la date. Si la carte
-   quitte la colonne, la date est conservée mais masquée, et réapparaît si la
-   carte y revient.
-4. **Synchronisation** — l'état complet du tableau est enregistré dans Firestore
-   (projet `setterplan`, document `board/current`) à chaque import et à chaque
-   déplacement de carte, et lu en temps réel via `onSnapshot` : un changement fait
-   sur un appareil apparaît sur les autres sans rechargement. Une pastille en haut
-   à droite indique l'état de la connexion (« En ligne », « Hors ligne », « Accès
+1. **Importer un CSV** — chaque ligne devient un contact dans la liste
+   « À appeler ». Colonnes reconnues spécifiquement : `Company Name for Emails`
+   (entreprise), `Gerant` (gérant), `Company Phone` (téléphone), `Company
+   Address` (adresse), `Ville` (utilisée par le filtre) et `Website` (site
+   web). Si ces en-têtes précis ne sont pas trouvés, une détection plus
+   générique prend le relais (`Nom`, `Téléphone`/`Tel`, `Adresse`, `Site`…).
+   Toute autre colonne présente dans le fichier est conservée et affichée dans
+   le détail du contact (`Libellé : valeur`). Séparateur `,` `;` ou tabulation
+   détecté automatiquement.
+2. **« À appeler »** est une liste compacte (une ligne = entreprise, gérant,
+   téléphone), pas des cartes. Cliquer sur une ligne la déplie pour voir
+   l'adresse, la ville, le site web et tout autre champ importé. Un menu
+   déroulant en haut de la liste filtre par ville (liste générée automatiquement
+   à partir des contacts importés).
+3. **4 colonnes fixes** à droite — « N'a pas répondu », « Relance nécessaire »,
+   « Mort », « Rendez-vous booké » — ne sont que des zones de dépôt : on y
+   dépose un contact par glisser-déposer (drag & drop HTML5 natif) depuis
+   « À appeler », il y reste affiché en permanence et disparaît de la liste de
+   gauche. On ne peut pas glisser un contact depuis une colonne pour le remettre
+   dans « À appeler » — ces colonnes ne sont pas des zones de dépôt entre elles
+   dans ce sens ; en revanche on peut le déplacer d'une catégorie à l'autre (par
+   glisser-déposer ou via les petites pastilles sous la carte).
+4. **Note par contact** — icône 📝 (liste) ou lien « Ajouter une note » (colonnes),
+   repliée par défaut. Cliquer l'ouvre en zone de texte éditable qui reste
+   ouverte tant qu'on ne clique pas explicitement sur « Fermer ». Le contenu est
+   sauvegardé dans Firestore comme le reste des données du contact.
+5. **Synchronisation** — l'état complet du tableau est enregistré dans Firestore
+   (projet `setterplan`, document `board/current`) à chaque import, déplacement,
+   note ou étoile, et lu en temps réel via `onSnapshot` : un changement fait sur
+   un appareil apparaît sur les autres sans rechargement. Une pastille en haut à
+   droite indique l'état de la connexion (« En ligne », « Hors ligne », « Accès
    refusé »). Hors ligne, le cache persistant du SDK garde le tableau consultable
    et rejoue les écritures au retour du réseau.
-5. **Réinitialiser** vide le tableau (avec confirmation).
+6. **Réinitialiser** vide tout le tableau (avec confirmation).
 
-Un fichier `exemple-contacts.csv` est fourni pour tester.
+Une petite étoile ☆/★ en haut à droite de chaque contact sert de simple
+marqueur visuel (elle ne change ni sa colonne ni son ordre d'affichage).
+
+Un fichier `exemple-contacts.csv` (plusieurs villes) est fourni pour tester.
 
 ## Règles Firestore
 
@@ -43,3 +59,12 @@ La synchronisation exige que le document `board/current` soit accessible. Les
 règles nécessaires sont dans `firestore.rules` ; tant qu'elles ne sont pas
 déployées, l'application affiche « Accès refusé » et les modifications restent
 locales à l'onglet.
+
+## Compatibilité avec les données déjà importées
+
+Les contacts déjà stockés avec l'ancien schéma (une seule colonne
+« nom »/« entreprise » et des informations complémentaires génériques) restent
+lisibles : l'entreprise est reprise depuis l'ancien champ, et la ville, le
+dirigeant, l'adresse et le site web déjà connus sont retrouvés automatiquement.
+Rien n'est perdu au chargement ; l'enregistrement au nouveau format se fait de
+lui-même à la première action sur le tableau (déplacement, note, étoile…).

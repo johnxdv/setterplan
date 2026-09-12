@@ -46,16 +46,31 @@ const normalize = (s) =>
     .toLowerCase()
     .replace(/[^a-z0-9]/g, '')
 
-const NAME_KEYS = ['nom', 'nomcomplet', 'nomprenom', 'name', 'fullname', 'contact', 'prenomnom', 'client']
-const PHONE_KEYS = ['telephone', 'tel', 'phone', 'mobile', 'portable', 'numero', 'numerodetelephone', 'gsm', 'telephone1']
-const COMPANY_KEYS = ['entreprise', 'societe', 'company', 'organisation', 'organization', 'boite', 'enseigne']
-const EMAIL_KEYS = ['email', 'mail', 'courriel', 'adressemail']
+// Colonnes attendues du CSV « setter » (reconnaissance exacte du libellé, en
+// tête de liste) avec un repli sur des libellés génériques si un futur import
+// utilise d'autres intitulés.
+const COMPANY_KEYS = [
+  'companynameforemails',
+  'nom', 'nomcomplet', 'nomprenom', 'name', 'fullname', 'contact', 'prenomnom',
+  'client', 'entreprise', 'societe', 'company', 'organisation', 'organization',
+  'boite', 'enseigne',
+]
+const GERANT_KEYS = ['gerant', 'dirigeant', 'manager', 'responsable']
+const PHONE_KEYS = [
+  'companyphone',
+  'telephone', 'tel', 'phone', 'mobile', 'portable', 'numero',
+  'numerodetelephone', 'gsm', 'telephone1',
+]
+const ADDRESS_KEYS = ['companyaddress', 'adresse', 'address']
+const VILLE_KEYS = ['ville', 'city', 'town', 'localite', 'commune']
+const WEBSITE_KEYS = ['website', 'site', 'siteweb', 'url', 'domaine']
 
-function matchColumn(headers, keys) {
-  // correspondance exacte d'abord, puis partielle
-  const exact = headers.findIndex((h) => keys.includes(h.norm))
+// Cherche, parmi les en-têtes pas encore utilisés, une correspondance exacte
+// d'abord (le libellé normalisé égale une des clés), puis partielle.
+function matchColumn(headers, keys, used) {
+  const exact = headers.findIndex((h, i) => !used.has(i) && keys.includes(h.norm))
   if (exact !== -1) return exact
-  return headers.findIndex((h) => keys.some((k) => h.norm.includes(k)))
+  return headers.findIndex((h, i) => !used.has(i) && keys.some((k) => h.norm.includes(k)))
 }
 
 let counter = 0
@@ -68,27 +83,39 @@ export function parseContacts(text) {
   if (rows.length < 2) return []
 
   const headers = rows[0].map((h) => ({ label: h.trim(), norm: normalize(h) }))
-  const nameIdx = matchColumn(headers, NAME_KEYS)
-  const phoneIdx = matchColumn(headers, PHONE_KEYS)
-  const companyIdx = matchColumn(headers, COMPANY_KEYS)
-  const emailIdx = matchColumn(headers, EMAIL_KEYS)
-  const usedIdx = new Set([nameIdx, phoneIdx, companyIdx, emailIdx].filter((i) => i !== -1))
+
+  const used = new Set()
+  function claim(keys) {
+    const idx = matchColumn(headers, keys, used)
+    if (idx !== -1) used.add(idx)
+    return idx
+  }
+
+  const companyIdx = claim(COMPANY_KEYS)
+  const gerantIdx = claim(GERANT_KEYS)
+  const phoneIdx = claim(PHONE_KEYS)
+  const addressIdx = claim(ADDRESS_KEYS)
+  const villeIdx = claim(VILLE_KEYS)
+  const websiteIdx = claim(WEBSITE_KEYS)
 
   return rows.slice(1).map((cells) => {
     const at = (i) => (i === -1 ? '' : (cells[i] || '').trim())
     const extras = headers
       .map((h, i) => ({ label: h.label || `Colonne ${i + 1}`, value: (cells[i] || '').trim() }))
-      .filter((f, i) => !usedIdx.has(i) && f.value !== '')
+      .filter((f, i) => !used.has(i) && f.value !== '')
 
     return {
       id: newId(),
-      name: at(nameIdx) || at(companyIdx) || 'Sans nom',
+      company: at(companyIdx) || 'Sans nom',
+      gerant: at(gerantIdx),
       phone: at(phoneIdx),
-      company: at(companyIdx),
-      email: at(emailIdx),
+      address: at(addressIdx),
+      ville: at(villeIdx),
+      website: at(websiteIdx),
       extras,
-      followUpAt: '',
+      note: '',
       starred: false,
+      followUpAt: '',
       column: 'todo',
     }
   })

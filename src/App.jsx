@@ -1,43 +1,94 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore'
 import { parseContacts } from './csv.js'
 import { boardRef } from './firebase.js'
 
+// Colonnes fixes de droite : zones de dépôt permanentes. « À appeler » n'en
+// fait pas partie : c'est une liste, pas une colonne (voir TodoList).
 const COLUMNS = [
-  { id: 'todo', title: 'À appeler', accent: '#7dabff' },
-  { id: 'booked', title: 'Rendez-vous booké', accent: '#4ade80' },
-  { id: 'followup', title: 'À relancer', accent: '#fde047' },
+  { id: 'no_answer', title: "N'a pas répondu", accent: '#fb923c' },
+  { id: 'followup', title: 'Relance nécessaire', accent: '#fde047' },
   { id: 'dead', title: 'Mort', accent: '#fca5a5' },
+  { id: 'booked', title: 'Rendez-vous booké', accent: '#4ade80' },
 ]
 
-const COLUMN_IDS = new Set(COLUMNS.map((c) => c.id))
+const COLUMN_IDS = new Set(['todo', ...COLUMNS.map((c) => c.id)])
 
+const normLabel = (s) =>
+  s
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+
+function normalizeUrl(url) {
+  const trimmed = url.trim()
+  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`
+}
+
+// Accepte aussi bien les cartes déjà stockées avec l'ancien schéma (name /
+// company / email / extras génériques) que le nouveau (company / gerant /
+// phone / address / ville / website). Les anciennes cartes ne sont jamais
+// perdues : leurs champs Ville / Dirigeant / Adresse / Site web, stockés en
+// extras, sont récupérés dans les nouveaux champs dédiés. La ré-écriture
+// complète en nouveau schéma se fait naturellement à la prochaine action de
+// l'utilisateur (persist() ré-enregistre toujours le tableau assaini entier).
 function sanitize(raw) {
   if (!Array.isArray(raw)) return []
   return raw
     .filter((c) => c && typeof c.id === 'string')
-    .map((c) => ({
-      id: c.id,
-      name: c.name || 'Sans nom',
-      phone: c.phone || '',
-      company: c.company || '',
-      email: c.email || '',
-      extras: Array.isArray(c.extras) ? c.extras : [],
-      followUpAt: typeof c.followUpAt === 'string' ? c.followUpAt : '',
-      starred: c.starred === true,
-      column: COLUMN_IDS.has(c.column) ? c.column : 'todo',
-    }))
+    .map((c) => {
+      let gerant = typeof c.gerant === 'string' ? c.gerant : ''
+      let address = typeof c.address === 'string' ? c.address : ''
+      let ville = typeof c.ville === 'string' ? c.ville : ''
+      let website = typeof c.website === 'string' ? c.website : ''
+
+      const rawExtras = Array.isArray(c.extras) ? c.extras : []
+      const extras = []
+      for (const e of rawExtras) {
+        const label = typeof e?.label === 'string' ? e.label : ''
+        const value = typeof e?.value === 'string' ? e.value : ''
+        if (!value) continue
+        const n = normLabel(label)
+        if (!gerant && (n === 'dirigeant' || n === 'gerant')) { gerant = value; continue }
+        if (!address && (n === 'adresse' || n === 'address')) { address = value; continue }
+        if (!ville && (n === 'ville' || n === 'city')) { ville = value; continue }
+        if (!website && (n === 'site web' || n === 'siteweb' || n === 'website')) { website = value; continue }
+        extras.push({ label: label || 'Info', value })
+      }
+
+      const company =
+        (typeof c.company === 'string' && c.company) ||
+        (typeof c.name === 'string' && c.name) ||
+        'Sans nom'
+
+      return {
+        id: c.id,
+        company,
+        gerant,
+        phone: typeof c.phone === 'string' ? c.phone : '',
+        address,
+        ville,
+        website,
+        extras,
+        note: typeof c.note === 'string' ? c.note : '',
+        starred: c.starred === true,
+        followUpAt: typeof c.followUpAt === 'string' ? c.followUpAt : '',
+        column: COLUMN_IDS.has(c.column) ? c.column : 'todo',
+      }
+    })
 }
 
 export default function App() {
   const [cards, setCards] = useState([])
   const [status, setStatus] = useState('connecting') // connecting | online | offline | denied
-  const [dragOver, setDragOver] = useState(null)
   const [error, setError] = useState('')
+  const [loaded, setLoaded] = useState(false)
+  const [cityFilter, setCityFilter] = useState('')
+  const [dragOverId, setDragOverId] = useState(null)
   const fileInput = useRef(null)
   const cardsRef = useRef([])
   const loadedRef = useRef(false)
-  const [loaded, setLoaded] = useState(false)
 
   // Lecture temps réel : toute modification faite depuis un autre appareil
   // arrive ici sans rechargement.
@@ -96,31 +147,42 @@ export default function App() {
     persist(cardsRef.current.map((c) => (c.id === id ? { ...c, column } : c)))
   }
 
-  // La date reste attachée à la carte même si elle quitte « À relancer » :
-  // elle est simplement masquée ailleurs, et retrouvée si la carte revient.
-  function setFollowUp(id, value) {
-    persist(cardsRef.current.map((c) => (c.id === id ? { ...c, followUpAt: value } : c)))
-  }
-
-  // L'étoile ne sert qu'à marquer la carte : elle ne change ni la colonne
-  // ni l'ordre d'affichage.
   function toggleStar(id) {
     persist(cardsRef.current.map((c) => (c.id === id ? { ...c, starred: !c.starred } : c)))
   }
 
+  function setNote(id, note) {
+    persist(cardsRef.current.map((c) => (c.id === id ? { ...c, note } : c)))
+  }
+
   function reset() {
     if (cardsRef.current.length === 0) return
-    if (confirm('Vider le tableau ? Toutes les cartes seront supprimées.')) {
+    if (confirm('Vider le tableau ? Tous les contacts seront supprimés.')) {
       persist([])
     }
   }
 
-  function onDrop(e, columnId) {
+  // Seules les 4 colonnes fixes sont des zones de dépôt : « À appeler » ne
+  // reçoit jamais aucun handler onDragOver/onDrop, donc un contact ne peut
+  // pas y revenir par glisser-déposer.
+  function onDropTo(e, columnId) {
     e.preventDefault()
-    setDragOver(null)
+    setDragOverId(null)
     const id = e.dataTransfer.getData('text/plain')
     if (id) moveCard(id, columnId)
   }
+
+  const cities = useMemo(() => {
+    const set = new Set()
+    for (const c of cards) if (c.ville) set.add(c.ville)
+    return [...set].sort((a, b) => a.localeCompare(b, 'fr'))
+  }, [cards])
+
+  const todoCards = useMemo(() => {
+    let list = cards.filter((c) => c.column === 'todo')
+    if (cityFilter) list = list.filter((c) => c.ville === cityFilter)
+    return list
+  }, [cards, cityFilter])
 
   return (
     <div className="app">
@@ -154,68 +216,51 @@ export default function App() {
       {error && <p className="error">{error}</p>}
       {loaded && cards.length === 0 && !error && (
         <p className="hint">
-          Importez un CSV (colonnes libres : nom, téléphone, entreprise, email, notes…) —
-          chaque ligne devient une carte dans « À appeler ».
+          Importez un CSV pour commencer — chaque ligne devient un contact dans « À appeler ».
         </p>
       )}
-      {!loaded && <p className="hint">Chargement du tableau…</p>}
 
-      <main className="board">
-        {COLUMNS.map((col) => {
-          let list = cards.filter((c) => c.column === col.id)
-          if (col.id === 'followup') list = sortByFollowUp(list)
-          return (
-            <section
-              key={col.id}
-              className={`column ${col.id} ${dragOver === col.id ? 'over' : ''}`}
-              onDragOver={(e) => {
-                e.preventDefault()
-                e.dataTransfer.dropEffect = 'move'
-                if (dragOver !== col.id) setDragOver(col.id)
-              }}
-              onDragLeave={(e) => {
-                if (!e.currentTarget.contains(e.relatedTarget)) setDragOver(null)
-              }}
-              onDrop={(e) => onDrop(e, col.id)}
-              data-testid={`col-${col.id}`}
-            >
-              <h2 className="column-title">
-                {col.title} <span className="badge">{list.length}</span>
-              </h2>
-              <div className="cards">
-                {list.map((card) => (
-                  <Card
-                    key={card.id}
-                    card={card}
-                    onMove={moveCard}
-                    onSetFollowUp={setFollowUp}
-                    onToggleStar={toggleStar}
-                  />
-                ))}
-              </div>
-            </section>
-          )
-        })}
-      </main>
+      {!loaded ? (
+        <p className="hint">Chargement du tableau…</p>
+      ) : (
+        <main className="workspace">
+          <TodoList
+            cards={todoCards}
+            cities={cities}
+            cityFilter={cityFilter}
+            onCityFilterChange={setCityFilter}
+            onToggleStar={toggleStar}
+            onSetNote={setNote}
+          />
+          <BoardColumns
+            cards={cards}
+            dragOverId={dragOverId}
+            setDragOverId={setDragOverId}
+            onDropTo={onDropTo}
+            onMove={moveCard}
+            onToggleStar={toggleStar}
+            onSetNote={setNote}
+          />
+        </main>
+      )}
     </div>
   )
 }
 
 function StatusPill({ status }) {
-  const label = {
-    online: 'En ligne',
-    offline: 'Hors ligne',
-    denied: 'Accès refusé',
-    connecting: 'Connexion…',
-  }[status]
-  const title = {
-    online: 'Synchronisé avec Firestore',
-    offline:
-      'Firestore est injoignable : le tableau affiché vient du cache local et vos changements seront envoyés au retour de la connexion.',
-    denied:
-      'Firestore refuse la lecture/écriture sur board/current. Vérifiez les règles de sécurité du projet.',
-    connecting: 'Connexion à Firestore…',
-  }[status]
+  const label =
+    { online: 'En ligne', offline: 'Hors ligne', denied: 'Accès refusé', connecting: 'Connexion…' }[
+      status
+    ]
+  const title =
+    {
+      online: 'Synchronisé avec Firestore',
+      offline:
+        'Firestore est injoignable : le tableau affiché vient du cache local et vos changements seront envoyés au retour de la connexion.',
+      denied:
+        'Firestore refuse la lecture/écriture sur board/current. Vérifiez les règles de sécurité du projet.',
+      connecting: 'Connexion à Firestore…',
+    }[status]
   return (
     <span className={`status ${status}`} title={title} data-testid="status">
       <span className="dot" />
@@ -224,85 +269,222 @@ function StatusPill({ status }) {
   )
 }
 
-// Les dates sont stockées au format du champ natif (YYYY-MM-DDTHH:mm),
-// donc triables telles quelles en ordre lexicographique.
-function sortByFollowUp(list) {
-  return [...list].sort((a, b) => {
-    if (!a.followUpAt) return b.followUpAt ? 1 : 0
-    if (!b.followUpAt) return -1
-    return a.followUpAt.localeCompare(b.followUpAt)
-  })
+function StarButton({ starred, onClick, className = '' }) {
+  return (
+    <button
+      type="button"
+      className={`star-btn ${starred ? 'on' : ''} ${className}`}
+      onClick={onClick}
+      aria-pressed={starred}
+      aria-label={starred ? "Retirer l'étoile" : 'Mettre une étoile'}
+      title={starred ? "Retirer l'étoile" : 'Mettre une étoile'}
+    >
+      {starred ? '★' : '☆'}
+    </button>
+  )
 }
 
-function formatFollowUp(value) {
-  const d = new Date(value)
-  if (Number.isNaN(d.getTime())) return value
-  const p = (n) => String(n).padStart(2, '0')
-  return `Relance le ${p(d.getDate())}/${p(d.getMonth() + 1)} à ${p(d.getHours())}h${p(d.getMinutes())}`
-}
+// Icône/lien de note repliée par défaut. Reste ouverte tant que l'utilisateur
+// ne clique pas explicitement sur « Fermer » — jamais de fermeture au clic
+// ailleurs. L'état ouvert/fermé et le texte en cours de frappe vivent en
+// state local (le composant reste monté tant que le contact reste dans la
+// même liste), la sauvegarde Firestore est débouncée pour ne pas ralentir la
+// frappe, et systématiquement vidée au blur.
+function NoteField({ card, onSetNote, variant = 'icon' }) {
+  const [open, setOpen] = useState(false)
+  const [text, setText] = useState(card.note || '')
+  const timerRef = useRef(null)
 
-function FollowUp({ card, onSet }) {
-  const inputRef = useRef(null)
-  const [fallback, setFallback] = useState(false)
+  useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current) }, [])
 
-  function openPicker() {
-    const el = inputRef.current
-    if (!el) return
-    try {
-      if (typeof el.showPicker === 'function') {
-        el.showPicker()
-        return
-      }
-    } catch {
-      // showPicker() refusé (navigateur ancien, hors geste utilisateur)
-    }
-    // Repli : on affiche le champ natif en clair.
-    setFallback(true)
-    setTimeout(() => el.focus(), 0)
+  function flush(value) {
+    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null }
+    onSetNote(card.id, value)
   }
 
-  const late = card.followUpAt && new Date(card.followUpAt).getTime() < Date.now()
+  function handleChange(e) {
+    const v = e.target.value
+    setText(v)
+    if (timerRef.current) clearTimeout(timerRef.current)
+    timerRef.current = setTimeout(() => onSetNote(card.id, v), 500)
+  }
+
+  if (!open) {
+    if (variant === 'label') {
+      return (
+        <button
+          type="button"
+          className="note-link"
+          onClick={(e) => { e.stopPropagation(); setOpen(true) }}
+        >
+          {card.note ? '🗒️ Note' : '📝 Ajouter une note'}
+        </button>
+      )
+    }
+    return (
+      <button
+        type="button"
+        className={`note-icon ${card.note ? 'has-note' : ''}`}
+        onClick={(e) => { e.stopPropagation(); setOpen(true) }}
+        title={card.note ? 'Voir / modifier la note' : 'Ajouter une note'}
+        aria-label={card.note ? 'Voir / modifier la note' : 'Ajouter une note'}
+      >
+        {card.note ? '🗒️' : '📝'}
+      </button>
+    )
+  }
 
   return (
-    <div className="relance">
-      <input
-        ref={inputRef}
-        type="datetime-local"
-        className={`relance-input ${fallback ? 'visible' : ''}`}
-        value={card.followUpAt || ''}
-        onChange={(e) => onSet(card.id, e.target.value)}
-        aria-label="Date et heure de relance"
+    <div className="note-box" onClick={(e) => e.stopPropagation()}>
+      <textarea
+        className="note-textarea"
+        value={text}
+        onChange={handleChange}
+        onBlur={() => flush(text)}
+        placeholder="Écrire une note…"
+        rows={3}
+        autoFocus
       />
-      {card.followUpAt ? (
-        <>
-          <button
-            type="button"
-            className={`relance-date ${late ? 'late' : ''}`}
-            onClick={openPicker}
-            title="Modifier la date de relance"
-          >
-            {formatFollowUp(card.followUpAt)}
-          </button>
-          <button
-            type="button"
-            className="relance-clear"
-            onClick={() => onSet(card.id, '')}
-            title="Effacer la relance"
-            aria-label="Effacer la relance"
-          >
-            ×
-          </button>
-        </>
-      ) : (
-        <button type="button" className="relance-set" onClick={openPicker}>
-          Fixer une relance
-        </button>
+      <button type="button" className="note-close" onClick={() => { flush(text); setOpen(false) }}>
+        Fermer
+      </button>
+    </div>
+  )
+}
+
+function DetailRow({ label, value }) {
+  return (
+    <div className="detail-row">
+      <span className="detail-label">{label} :</span> {value}
+    </div>
+  )
+}
+
+// Colonne de gauche : liste compacte, pas de cartes, pas de zone de dépôt
+// (aucun onDragOver/onDrop ici) — on ne peut qu'en faire sortir des contacts.
+function TodoList({ cards, cities, cityFilter, onCityFilterChange, onToggleStar, onSetNote }) {
+  return (
+    <aside className="sidebar">
+      <div className="sidebar-header">
+        <h2>
+          À appeler <span className="badge">{cards.length}</span>
+        </h2>
+        <select
+          className="city-filter"
+          value={cityFilter}
+          onChange={(e) => onCityFilterChange(e.target.value)}
+          aria-label="Filtrer par ville"
+        >
+          <option value="">Toutes les villes</option>
+          {cities.map((v) => (
+            <option key={v} value={v}>{v}</option>
+          ))}
+        </select>
+      </div>
+      <div className="sidebar-list">
+        {cards.length === 0 && (
+          <p className="sidebar-empty">Aucun contact{cityFilter ? ' pour cette ville' : ''}.</p>
+        )}
+        {cards.map((card) => (
+          <TodoRow key={card.id} card={card} onToggleStar={onToggleStar} onSetNote={onSetNote} />
+        ))}
+      </div>
+    </aside>
+  )
+}
+
+function TodoRow({ card, onToggleStar, onSetNote }) {
+  const [expanded, setExpanded] = useState(false)
+  const hasDetail = card.address || card.ville || card.website || card.extras.length > 0
+
+  return (
+    <div
+      className="todo-row"
+      draggable
+      data-card-id={card.id}
+      onDragStart={(e) => {
+        e.dataTransfer.setData('text/plain', card.id)
+        e.dataTransfer.effectAllowed = 'move'
+        e.currentTarget.classList.add('dragging')
+      }}
+      onDragEnd={(e) => e.currentTarget.classList.remove('dragging')}
+    >
+      <div
+        className="todo-row-main"
+        role="button"
+        tabIndex={0}
+        onClick={() => setExpanded((v) => !v)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            setExpanded((v) => !v)
+          }
+        }}
+      >
+        <span className="todo-company">{card.company}</span>
+        <span className="todo-gerant">{card.gerant || '—'}</span>
+        <span className="todo-phone">{card.phone}</span>
+        <span className="todo-row-tools">
+          <StarButton starred={card.starred} onClick={(e) => { e.stopPropagation(); onToggleStar(card.id) }} />
+          <NoteField card={card} onSetNote={onSetNote} />
+        </span>
+      </div>
+      {expanded && (
+        <div className="todo-detail">
+          {card.address && <DetailRow label="Adresse" value={card.address} />}
+          {card.ville && <DetailRow label="Ville" value={card.ville} />}
+          {card.website && (
+            <div className="detail-row">
+              <span className="detail-label">Site web :</span>{' '}
+              <a href={normalizeUrl(card.website)} target="_blank" rel="noreferrer">{card.website}</a>
+            </div>
+          )}
+          {card.extras.map((f) => <DetailRow key={f.label} label={f.label} value={f.value} />)}
+          {!hasDetail && <p className="detail-empty">Aucune autre information.</p>}
+        </div>
       )}
     </div>
   )
 }
 
-function Card({ card, onMove, onSetFollowUp, onToggleStar }) {
+// Les 4 colonnes fixes : uniquement des zones de dépôt, ne bougent jamais.
+function BoardColumns({ cards, dragOverId, setDragOverId, onDropTo, onMove, onToggleStar, onSetNote }) {
+  return (
+    <div className="board-columns">
+      {COLUMNS.map((col) => {
+        const list = cards.filter((c) => c.column === col.id)
+        return (
+          <section
+            key={col.id}
+            className={`column ${col.id} ${dragOverId === col.id ? 'over' : ''}`}
+            onDragOver={(e) => {
+              e.preventDefault()
+              e.dataTransfer.dropEffect = 'move'
+              if (dragOverId !== col.id) setDragOverId(col.id)
+            }}
+            onDragLeave={(e) => {
+              if (!e.currentTarget.contains(e.relatedTarget)) setDragOverId(null)
+            }}
+            onDrop={(e) => onDropTo(e, col.id)}
+            data-testid={`col-${col.id}`}
+          >
+            <h2 className="column-title">
+              {col.title} <span className="badge">{list.length}</span>
+            </h2>
+            <div className="cards">
+              {list.length === 0 && <p className="column-empty">Vide</p>}
+              {list.map((card) => (
+                <FixedCard key={card.id} card={card} onMove={onMove} onToggleStar={onToggleStar} onSetNote={onSetNote} />
+              ))}
+            </div>
+          </section>
+        )
+      })}
+    </div>
+  )
+}
+
+function FixedCard({ card, onMove, onToggleStar, onSetNote }) {
   return (
     <article
       className="card"
@@ -315,32 +497,30 @@ function Card({ card, onMove, onSetFollowUp, onToggleStar }) {
       }}
       onDragEnd={(e) => e.currentTarget.classList.remove('dragging')}
     >
-      <button
-        type="button"
-        className={`card-star ${card.starred ? 'on' : ''}`}
-        onClick={() => onToggleStar(card.id)}
-        aria-pressed={card.starred}
-        aria-label={card.starred ? 'Retirer l’étoile' : 'Mettre une étoile'}
-        title={card.starred ? 'Retirer l’étoile' : 'Mettre une étoile'}
-      >
-        {card.starred ? '★' : '☆'}
-      </button>
-      <div className="card-name">{card.name}</div>
+      <StarButton starred={card.starred} onClick={() => onToggleStar(card.id)} className="card-star" />
+      <div className="card-name">{card.company}</div>
       {card.phone && (
         <a className="card-phone" href={`tel:${card.phone.replace(/[^+\d]/g, '')}`}>
           {card.phone}
         </a>
       )}
-      {card.company && <div className="card-company">{card.company}</div>}
-      {card.email && <div className="card-extra">{card.email}</div>}
-      {card.extras?.map((f) => (
+      {card.gerant && <div className="card-company">{card.gerant}</div>}
+      {card.ville && <div className="card-extra"><span className="label">Ville :</span> {card.ville}</div>}
+      {card.address && <div className="card-extra"><span className="label">Adresse :</span> {card.address}</div>}
+      {card.website && (
+        <div className="card-extra">
+          <span className="label">Site :</span>{' '}
+          <a href={normalizeUrl(card.website)} target="_blank" rel="noreferrer">{card.website}</a>
+        </div>
+      )}
+      {card.extras.map((f) => (
         <div className="card-extra" key={f.label}>
           <span className="label">{f.label} :</span> {f.value}
         </div>
       ))}
-      {card.column === 'followup' && (
-        <FollowUp card={card} onSet={onSetFollowUp} />
-      )}
+
+      <NoteField card={card} onSetNote={onSetNote} variant="label" />
+
       <div className="card-move">
         {COLUMNS.filter((c) => c.id !== card.column).map((c) => (
           <button

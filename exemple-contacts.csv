@@ -1,5 +1,6 @@
-Nom,Téléphone,Entreprise,Email,Notes
-Marie Dupont,06 12 34 56 78,Boulangerie Dupont,marie@dupont.fr,Rappeler après 14h
-Jean Martin,07 98 76 54 32,Garage Martin,jean.martin@garage.fr,Intéressé par l'offre
-Sophie Bernard,01 45 67 89 10,Cabinet Bernard,,A déjà un prestataire
-Karim Haddad,06 55 44 33 22,Studio KH,karim@studiokh.com,Devis envoyé
+Company Name for Emails,Gerant,Company Phone,Company Address,Ville,Website
+Atelier Vernon,Lucie Vernon,06 71 22 33 44,10 rue des Lilas 75011 Paris,Paris,https://atelier-vernon.fr
+Menuiserie Castel,Paul Castel,07 44 11 22 33,5 avenue Foch 06600 Antibes,Antibes,menuiserie-castel.fr
+Cabinet Solaris,Nora Solaris,04 93 20 10 05,8 place Masséna 06000 Nice,Nice,
+Studio Belline,Théo Belline,06 82 55 66 77,3 rue Meynadier 06400 Cannes,Cannes,studio-belline.com
+Agence Corail,Inès Corail,04 93 11 22 33,22 boulevard Carnot 06400 Cannes,Cannes,agence-corail.com
