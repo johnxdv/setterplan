@@ -82,6 +82,7 @@ function sanitize(raw) {
         starred: c.starred === true,
         followUpAt: typeof c.followUpAt === 'string' ? c.followUpAt : '',
         column: COLUMN_IDS.has(c.column) ? c.column : 'todo',
+        classifiedAt: typeof c.classifiedAt === 'number' ? c.classifiedAt : 0,
       }
     })
 }
@@ -157,8 +158,10 @@ export default function App() {
     e.target.value = ''
   }
 
+  // classifiedAt capture l'instant du dépôt : les colonnes fixes affichent
+  // leurs contacts du plus récemment classé au plus ancien.
   function moveCard(id, column) {
-    persist(cardsRef.current.map((c) => (c.id === id ? { ...c, column } : c)))
+    persist(cardsRef.current.map((c) => (c.id === id ? { ...c, column, classifiedAt: Date.now() } : c)))
   }
 
   function toggleStar(id) {
@@ -468,7 +471,9 @@ function BoardColumns({ cards, dragOverId, setDragOverId, onDropTo, onToggleStar
   return (
     <div className="board-columns">
       {COLUMNS.map((col) => {
-        const list = cards.filter((c) => c.column === col.id)
+        const list = cards
+          .filter((c) => c.column === col.id)
+          .sort((a, b) => b.classifiedAt - a.classifiedAt)
         return (
           <section
             key={col.id}
