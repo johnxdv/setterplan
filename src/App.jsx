@@ -5,9 +5,12 @@ import { boardRef } from './firebase.js'
 
 // Colonnes fixes de droite : zones de dépôt permanentes. « À appeler » n'en
 // fait pas partie : c'est une liste, pas une colonne (voir TodoList).
+// Les id sont les clés internes (Firestore, filtrage) : ils ne changent pas
+// même quand le libellé affiché (title) est renommé.
 const COLUMNS = [
-  { id: 'no_answer', title: "N'a pas répondu" },
-  { id: 'followup', title: 'Relance nécessaire' },
+  { id: 'urgent_48h', title: 'Rappel urgent -48h' },
+  { id: 'followup', title: 'Rappel -7 jours' },
+  { id: 'no_answer', title: 'Relance dans 1-3 mois' },
   { id: 'dead', title: 'Mort' },
   { id: 'booked', title: 'Rendez-vous booké' },
 ]
@@ -145,7 +148,7 @@ export default function App() {
         setError('Aucune ligne exploitable dans ce fichier.')
       } else {
         // Le nouvel import remplace entièrement « À appeler ». Les contacts
-        // déjà classés dans une des 4 catégories fixes ne sont jamais
+        // déjà classés dans une des 5 catégories fixes ne sont jamais
         // touchés, et un contact du CSV qui les matche (même entreprise +
         // même téléphone) n'est pas réintroduit en double dans « À appeler ».
         const classified = cardsRef.current.filter((c) => c.column !== 'todo')
@@ -180,7 +183,7 @@ export default function App() {
     }
   }
 
-  // Seules les 4 colonnes fixes sont des zones de dépôt : « À appeler » ne
+  // Seules les 5 colonnes fixes sont des zones de dépôt : « À appeler » ne
   // reçoit jamais aucun handler onDragOver/onDrop, donc un contact ne peut
   // pas y revenir par glisser-déposer.
   function onDropTo(e, columnId) {
@@ -205,7 +208,7 @@ export default function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <h1>Road to 1M de Victor</h1>
+        <h1>Planning d'appel</h1>
         <div className="actions">
           <StatusPill status={status} />
           <input
@@ -440,7 +443,7 @@ function TodoList({ cards, cities, cityFilter, onCityFilterChange, onToggleStar,
   )
 }
 
-// Composant d'affichage unique, partagé entre « À appeler » et les 4
+// Composant d'affichage unique, partagé entre « À appeler » et les 5
 // catégories fixes : liste compacte (entreprise, gérant, téléphone) qui se
 // déplie au clic pour révéler le détail et la note. Seul le conteneur qui
 // l'accueille (et donc la colonne de destination au drop) change.
@@ -549,7 +552,7 @@ function ContactRow({ card, onToggleStar, onSetNote, onMoveCard }) {
   )
 }
 
-// Les 4 colonnes fixes : uniquement des zones de dépôt, ne bougent jamais.
+// Les 5 colonnes fixes : uniquement des zones de dépôt, ne bougent jamais.
 // Chaque contact y est affiché avec le même ContactRow que « À appeler » ;
 // on le reclasse par glisser-déposer d'une colonne à l'autre.
 function BoardColumns({ cards, dragOverId, setDragOverId, onDropTo, onToggleStar, onSetNote, onMoveCard }) {

@@ -1,6 +1,5 @@
 :root {
   color-scheme: dark;
-  --bg: #0b1020;
   --surface: #151b2e;
   --surface-2: #1c2438;
   --ink: #e8ecf6;
@@ -15,11 +14,35 @@ html, body, #root { height: 100%; }
 
 body {
   margin: 0;
-  background: var(--bg);
+  background: linear-gradient(160deg, #060810 0%, #0c1226 45%, #070a15 100%);
   color: var(--ink);
+  position: relative;
 }
 
-.app { display: flex; flex-direction: column; height: 100vh; padding: 16px 20px; gap: 12px; }
+/* Flèche décorative en filigrane : clin d'œil discret à la progression, ne
+   doit jamais gêner la lecture (pointer-events: none, très faible opacité). */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 600 600'%3E%3Cpath d='M70 530 L530 70 M530 70 L530 230 M530 70 L370 70' stroke='%237dabff' stroke-width='16' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right -4vw top -4vw;
+  background-size: min(40vw, 460px) auto;
+  opacity: .08;
+}
+
+.app {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  padding: 16px 20px;
+  gap: 12px;
+}
 
 .topbar {
   flex: none;
@@ -312,7 +335,7 @@ body {
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-columns: repeat(4, minmax(200px, 1fr));
+  grid-template-columns: repeat(5, minmax(180px, 1fr));
   gap: 14px;
 }
 
@@ -328,15 +351,17 @@ body {
   transition: background .12s, border-color .12s;
 }
 
-.column.no_answer { border-color: #fb923c; }
-.column.followup  { border-color: #fde047; }
-.column.dead      { border-color: #f8717d; }
-.column.booked    { border-color: #22c55e; }
+.column.urgent_48h { border-color: #8a7355; }
+.column.followup   { border-color: #d9c7a1; }
+.column.no_answer  { border-color: #f2f2ee; }
+.column.dead       { border-color: #f8717d; }
+.column.booked     { border-color: #22c55e; }
 
-.column.no_answer .column-title { color: #fdba74; }
-.column.followup  .column-title { color: #fde047; }
-.column.dead      .column-title { color: #fca5a5; }
-.column.booked    .column-title { color: #4ade80; }
+.column.urgent_48h .column-title { color: #cbab7c; }
+.column.followup   .column-title { color: #e6d6b0; }
+.column.no_answer  .column-title { color: #ffffff; }
+.column.dead       .column-title { color: #fca5a5; }
+.column.booked     .column-title { color: #4ade80; }
 
 .column.over { background: #1e2740; border-style: dashed; }
 
@@ -395,6 +420,7 @@ body {
   .board-columns { display: contents; }
   .sidebar, .column { display: none; width: 100%; flex: 1 1 auto; max-height: none; }
   .workspace[data-active-tab="todo"] > .sidebar,
+  .workspace[data-active-tab="urgent_48h"] .column.urgent_48h,
   .workspace[data-active-tab="no_answer"] .column.no_answer,
   .workspace[data-active-tab="followup"] .column.followup,
   .workspace[data-active-tab="dead"] .column.dead,

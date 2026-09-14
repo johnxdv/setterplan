@@ -1,7 +1,7 @@
-# Road to 1M de Victor
+# Planning d'appel
 
 Espace de travail pour setter : import CSV, liste « À appeler » filtrable par
-ville, 4 colonnes de classement, notes par contact, synchronisation temps réel
+ville, 5 colonnes de classement, notes par contact, synchronisation temps réel
 entre appareils via Firestore.
 
 ## Démarrer
@@ -27,14 +27,15 @@ npm run dev
    l'adresse, la ville, le site web et tout autre champ importé. Un menu
    déroulant en haut de la liste filtre par ville (liste générée automatiquement
    à partir des contacts importés).
-3. **4 colonnes fixes** à droite — « N'a pas répondu », « Relance nécessaire »,
-   « Mort », « Rendez-vous booké » — ne sont que des zones de dépôt : on y
-   dépose un contact par glisser-déposer (drag & drop HTML5 natif) depuis
-   « À appeler », il y reste affiché en permanence et disparaît de la liste de
-   gauche. On ne peut pas glisser un contact depuis une colonne pour le remettre
-   dans « À appeler » — ces colonnes ne sont pas des zones de dépôt entre elles
-   dans ce sens ; en revanche on peut le déplacer d'une catégorie à l'autre (par
-   glisser-déposer ou via les petites pastilles sous la carte).
+3. **5 colonnes fixes** à droite — « Rappel urgent -48h », « Rappel -7 jours »,
+   « Relance dans 1-3 mois », « Mort », « Rendez-vous booké » — ne sont que
+   des zones de dépôt : on y dépose un contact par glisser-déposer (drag & drop
+   HTML5 natif) depuis « À appeler », il y reste affiché en permanence et
+   disparaît de la liste de gauche. On ne peut pas glisser un contact depuis
+   une colonne pour le remettre dans « À appeler » — ces colonnes ne sont pas
+   des zones de dépôt entre elles dans ce sens ; en revanche on peut le
+   déplacer d'une catégorie à l'autre (par glisser-déposer ou via les petites
+   pastilles sous la carte).
 4. **Note par contact** — icône 📝 (liste) ou lien « Ajouter une note » (colonnes),
    repliée par défaut. Cliquer l'ouvre en zone de texte éditable qui reste
    ouverte tant qu'on ne clique pas explicitement sur « Fermer ». Le contenu est
