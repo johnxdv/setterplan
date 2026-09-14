@@ -48,6 +48,16 @@ npm run dev
    refusé »). Hors ligne, le cache persistant du SDK garde le tableau consultable
    et rejoue les écritures au retour du réseau.
 6. **Réinitialiser** vide tout le tableau (avec confirmation).
+7. **Rechercher** (en haut) filtre sur l'entreprise, le gérant, la ville et le
+   téléphone. Le ou les contacts trouvés ne sont jamais déplacés : ils
+   s'illuminent d'un halo doré directement dans la colonne où ils sont déjà
+   classés, avec défilement automatique jusqu'au premier résultat (et bascule
+   d'onglet si besoin sur mobile).
+8. **Ajouter un contact** (bouton **+** à côté de « À appeler ») ouvre un
+   formulaire de création manuelle ; le nouveau contact est ajouté dans
+   « À appeler ». La ville se choisit dans un menu déroulant listant les
+   villes déjà connues (plus une option « + Nouvelle ville… ») plutôt qu'en
+   texte libre, pour éviter les doublons dus aux fautes de frappe.
 
 Une petite étoile ☆/★ en haut à droite de chaque contact sert de simple
 marqueur visuel (elle ne change ni sa colonne ni son ordre d'affichage).

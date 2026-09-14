@@ -74,7 +74,7 @@ function matchColumn(headers, keys, used) {
 }
 
 let counter = 0
-const newId = () => `c${Date.now().toString(36)}-${(counter++).toString(36)}`
+export const newId = () => `c${Date.now().toString(36)}-${(counter++).toString(36)}`
 
 export function parseContacts(text) {
   const clean = text.replace(/^\uFEFF/, '')

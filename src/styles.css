@@ -55,6 +55,47 @@ body::before {
 
 .topbar h1 { font-size: 22px; margin: 0; letter-spacing: .01em; }
 
+.search-bar {
+  flex: 1 1 260px;
+  max-width: 440px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.search-input-wrap { position: relative; flex: 1 1 auto; min-width: 0; }
+.search-input {
+  width: 100%;
+  font: inherit;
+  font-size: 14px;
+  padding: 9px 34px 9px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--ink);
+}
+.search-input::placeholder { color: var(--muted); }
+.search-clear {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 4px;
+  border-radius: 50%;
+}
+.search-clear:hover { background: rgba(255, 255, 255, .08); color: var(--ink); }
+.search-count {
+  flex: none;
+  font-size: 13px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
 .actions { display: flex; align-items: center; gap: 10px; }
 
 .count { color: var(--muted); font-size: 14px; }
@@ -134,13 +175,38 @@ body::before {
   border-bottom: 1px solid var(--line);
 }
 
+.sidebar-header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
 .sidebar-header h2 {
-  margin: 0 0 8px;
+  margin: 0;
   font-size: 15px;
   text-transform: uppercase;
   letter-spacing: .03em;
   color: #7dabff;
 }
+
+.add-contact-btn {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: #7dabff;
+  font-size: 16px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.add-contact-btn:hover { background: #24304c; }
 
 .city-filter {
   width: 100%;
@@ -181,6 +247,17 @@ body::before {
 }
 .contact-row:active { cursor: grabbing; }
 .contact-row.dragging { opacity: .4; }
+
+/* Contact trouvé par la recherche : reste dans sa colonne, juste « illuminé »
+   par un halo doré pulsant pour attirer l'œil sans être criard. */
+.contact-row.highlighted {
+  border-color: #ffd166;
+  animation: contact-glow 1.6s ease-in-out infinite;
+}
+@keyframes contact-glow {
+  0%, 100% { box-shadow: 0 0 0 2px #ffd16655, 0 0 10px 1px #ffd16633; }
+  50% { box-shadow: 0 0 0 2px #ffd166cc, 0 0 22px 4px #ffd16688; }
+}
 
 .contact-row-main {
   display: flex;
@@ -383,6 +460,56 @@ body::before {
 }
 
 .cards { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+
+/* Formulaire de création manuelle de contact. */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgba(4, 6, 14, .72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.modal {
+  width: min(440px, 100%);
+  max-height: 90vh;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 20px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, .5);
+}
+.modal h2 { margin: 0 0 4px; font-size: 17px; }
+.modal-sub { margin: 0 0 16px; color: var(--muted); font-size: 13px; }
+
+.form-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+.form-field label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .03em;
+}
+.form-field input, .form-field select {
+  font: inherit;
+  font-size: 14px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--ink);
+}
+.add-ville-new { margin-top: 6px; }
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
 
 /* Mobile : une seule colonne visible à la fois, sélectionnée par la barre
    d'onglets. Le glisser-déposer HTML5 étant peu fiable au doigt, chaque

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore'
-import { parseContacts } from './csv.js'
+import { parseContacts, newId } from './csv.js'
 import { boardRef } from './firebase.js'
 
 // Colonnes fixes de droite : zones de dépôt permanentes. « À appeler » n'en
@@ -34,6 +34,18 @@ function normalizeUrl(url) {
 // ignorés côté téléphone) désignent le même contact.
 function contactKey(company, phone) {
   return `${normLabel(company || '')}|${(phone || '').replace(/\D/g, '')}`
+}
+
+// Recherche : compare entreprise / gérant / ville (accents et casse ignorés)
+// et téléphone (chiffres seuls, pour tolérer espaces/points/tirets).
+function matchesSearch(card, termNorm, digits) {
+  if (termNorm && (
+    normLabel(card.company).includes(termNorm) ||
+    normLabel(card.gerant).includes(termNorm) ||
+    normLabel(card.ville).includes(termNorm)
+  )) return true
+  if (digits && card.phone.replace(/\D/g, '').includes(digits)) return true
+  return false
 }
 
 // Accepte aussi bien les cartes déjà stockées avec l'ancien schéma (name /
@@ -98,6 +110,8 @@ export default function App() {
   const [cityFilter, setCityFilter] = useState('')
   const [dragOverId, setDragOverId] = useState(null)
   const [activeTab, setActiveTab] = useState('todo')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [showAddForm, setShowAddForm] = useState(false)
   const fileInput = useRef(null)
   const cardsRef = useRef([])
   const loadedRef = useRef(false)
@@ -183,6 +197,27 @@ export default function App() {
     }
   }
 
+  // Contact créé à la main : atterrit dans « À appeler », comme un import
+  // CSV — aucune carte existante n'est déplacée ni reclassée.
+  function addContact({ company, gerant, phone, address, ville, website }) {
+    const card = {
+      id: newId(),
+      company: company.trim() || 'Sans nom',
+      gerant: gerant.trim(),
+      phone: phone.trim(),
+      address: address.trim(),
+      ville: ville.trim(),
+      website: website.trim(),
+      extras: [],
+      note: '',
+      starred: false,
+      followUpAt: '',
+      column: 'todo',
+      classifiedAt: 0,
+    }
+    persist([...cardsRef.current, card])
+  }
+
   // Seules les 5 colonnes fixes sont des zones de dépôt : « À appeler » ne
   // reçoit jamais aucun handler onDragOver/onDrop, donc un contact ne peut
   // pas y revenir par glisser-déposer.
@@ -205,10 +240,64 @@ export default function App() {
     return list
   }, [cards, cityFilter])
 
+  const searchTerm = normLabel(searchQuery.trim())
+  const searchDigits = searchQuery.replace(/\D/g, '')
+  const hasSearch = Boolean(searchTerm || searchDigits)
+
+  const matchedIds = useMemo(() => {
+    if (!hasSearch) return new Set()
+    return new Set(cards.filter((c) => matchesSearch(c, searchTerm, searchDigits)).map((c) => c.id))
+  }, [cards, searchTerm, searchDigits, hasSearch])
+
+  // Un contact trouvé n'est jamais déplacé : on l'illumine (voir .highlighted)
+  // là où il est déjà classé. Sur mobile, une seule colonne est visible à la
+  // fois (activeTab) donc on bascule dessus avant de faire défiler jusqu'à
+  // lui ; sur desktop toutes les colonnes sont déjà visibles, ce changement
+  // est sans effet visuel.
+  useEffect(() => {
+    if (!hasSearch || matchedIds.size === 0) return
+    const firstMatch = cardsRef.current.find((c) => matchedIds.has(c.id))
+    if (!firstMatch) return
+    if (firstMatch.column !== activeTab) {
+      setActiveTab(firstMatch.column)
+      return
+    }
+    const el = document.querySelector(`[data-card-id="${firstMatch.id}"]`)
+    el?.scrollIntoView({ block: 'center' })
+  }, [matchedIds, hasSearch, activeTab])
+
   return (
     <div className="app">
       <header className="topbar">
         <h1>Planning d'appel</h1>
+        <div className="search-bar">
+          <div className="search-input-wrap">
+            <input
+              type="text"
+              className="search-input"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Rechercher un contact (entreprise, gérant, ville, téléphone)…"
+              aria-label="Rechercher un contact"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                className="search-clear"
+                onClick={() => setSearchQuery('')}
+                aria-label="Effacer la recherche"
+                title="Effacer la recherche"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+          {hasSearch && (
+            <span className="search-count">
+              {matchedIds.size} résultat{matchedIds.size > 1 ? 's' : ''}
+            </span>
+          )}
+        </div>
         <div className="actions">
           <StatusPill status={status} />
           <input
@@ -274,6 +363,8 @@ export default function App() {
               onToggleStar={toggleStar}
               onSetNote={setNote}
               onMoveCard={moveCard}
+              matchedIds={matchedIds}
+              onAddContact={() => setShowAddForm(true)}
             />
             <BoardColumns
               cards={cards}
@@ -283,9 +374,21 @@ export default function App() {
               onToggleStar={toggleStar}
               onSetNote={setNote}
               onMoveCard={moveCard}
+              matchedIds={matchedIds}
             />
           </main>
         </>
+      )}
+
+      {showAddForm && (
+        <AddContactModal
+          cities={cities}
+          onCancel={() => setShowAddForm(false)}
+          onCreate={(fields) => {
+            addContact(fields)
+            setShowAddForm(false)
+          }}
+        />
       )}
     </div>
   )
@@ -412,13 +515,24 @@ function DetailRow({ label, value }) {
 
 // Colonne de gauche : liste compacte, pas de cartes, pas de zone de dépôt
 // (aucun onDragOver/onDrop ici) — on ne peut qu'en faire sortir des contacts.
-function TodoList({ cards, cities, cityFilter, onCityFilterChange, onToggleStar, onSetNote, onMoveCard }) {
+function TodoList({ cards, cities, cityFilter, onCityFilterChange, onToggleStar, onSetNote, onMoveCard, matchedIds, onAddContact }) {
   return (
     <aside className="sidebar" data-tab="todo">
       <div className="sidebar-header">
-        <h2>
-          À appeler <span className="badge">{cards.length}</span>
-        </h2>
+        <div className="sidebar-header-top">
+          <h2>
+            À appeler <span className="badge">{cards.length}</span>
+          </h2>
+          <button
+            type="button"
+            className="add-contact-btn"
+            onClick={onAddContact}
+            aria-label="Ajouter un contact manuellement"
+            title="Ajouter un contact manuellement"
+          >
+            +
+          </button>
+        </div>
         <select
           className="city-filter"
           value={cityFilter}
@@ -436,7 +550,14 @@ function TodoList({ cards, cities, cityFilter, onCityFilterChange, onToggleStar,
           <p className="sidebar-empty">Aucun contact{cityFilter ? ' pour cette ville' : ''}.</p>
         )}
         {cards.map((card) => (
-          <ContactRow key={card.id} card={card} onToggleStar={onToggleStar} onSetNote={onSetNote} onMoveCard={onMoveCard} />
+          <ContactRow
+            key={card.id}
+            card={card}
+            onToggleStar={onToggleStar}
+            onSetNote={onSetNote}
+            onMoveCard={onMoveCard}
+            highlighted={matchedIds?.has(card.id)}
+          />
         ))}
       </div>
     </aside>
@@ -447,7 +568,7 @@ function TodoList({ cards, cities, cityFilter, onCityFilterChange, onToggleStar,
 // catégories fixes : liste compacte (entreprise, gérant, téléphone) qui se
 // déplie au clic pour révéler le détail et la note. Seul le conteneur qui
 // l'accueille (et donc la colonne de destination au drop) change.
-function ContactRow({ card, onToggleStar, onSetNote, onMoveCard }) {
+function ContactRow({ card, onToggleStar, onSetNote, onMoveCard, highlighted }) {
   const [expanded, setExpanded] = useState(false)
   const [moveMenuOpen, setMoveMenuOpen] = useState(false)
   const hasDetail = card.address || card.ville || card.website || card.extras.length > 0
@@ -461,7 +582,7 @@ function ContactRow({ card, onToggleStar, onSetNote, onMoveCard }) {
 
   return (
     <div
-      className="contact-row"
+      className={`contact-row ${highlighted ? 'highlighted' : ''}`}
       draggable
       data-card-id={card.id}
       onDragStart={(e) => {
@@ -555,7 +676,7 @@ function ContactRow({ card, onToggleStar, onSetNote, onMoveCard }) {
 // Les 5 colonnes fixes : uniquement des zones de dépôt, ne bougent jamais.
 // Chaque contact y est affiché avec le même ContactRow que « À appeler » ;
 // on le reclasse par glisser-déposer d'une colonne à l'autre.
-function BoardColumns({ cards, dragOverId, setDragOverId, onDropTo, onToggleStar, onSetNote, onMoveCard }) {
+function BoardColumns({ cards, dragOverId, setDragOverId, onDropTo, onToggleStar, onSetNote, onMoveCard, matchedIds }) {
   return (
     <div className="board-columns">
       {COLUMNS.map((col) => {
@@ -584,12 +705,108 @@ function BoardColumns({ cards, dragOverId, setDragOverId, onDropTo, onToggleStar
             <div className="cards">
               {list.length === 0 && <p className="column-empty">Vide</p>}
               {list.map((card) => (
-                <ContactRow key={card.id} card={card} onToggleStar={onToggleStar} onSetNote={onSetNote} onMoveCard={onMoveCard} />
+                <ContactRow
+                  key={card.id}
+                  card={card}
+                  onToggleStar={onToggleStar}
+                  onSetNote={onSetNote}
+                  onMoveCard={onMoveCard}
+                  highlighted={matchedIds?.has(card.id)}
+                />
               ))}
             </div>
           </section>
         )
       })}
+    </div>
+  )
+}
+
+const NEW_CITY_VALUE = '__new__'
+
+// Formulaire de création manuelle : la ville se choisit dans la liste des
+// villes déjà connues (select fiable, pas de saisie libre source de doublons
+// comme « Nice » / « nice » / « Nice  ») avec une option « + Nouvelle ville »
+// qui révèle un champ texte dédié pour les villes pas encore vues.
+function AddContactModal({ cities, onCancel, onCreate }) {
+  const [company, setCompany] = useState('')
+  const [gerant, setGerant] = useState('')
+  const [phone, setPhone] = useState('')
+  const [address, setAddress] = useState('')
+  const [website, setWebsite] = useState('')
+  const [villeChoice, setVilleChoice] = useState(cities.length ? '' : NEW_CITY_VALUE)
+  const [newVille, setNewVille] = useState('')
+  const companyRef = useRef(null)
+
+  useEffect(() => {
+    companyRef.current?.focus()
+  }, [])
+
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onCancel() }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onCancel])
+
+  const isNewVille = villeChoice === NEW_CITY_VALUE
+  const ville = isNewVille ? newVille : villeChoice
+  const canSubmit = company.trim() !== ''
+
+  function handleSubmit(e) {
+    e.preventDefault()
+    if (!canSubmit) return
+    onCreate({ company, gerant, phone, address, ville, website })
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onCancel}>
+      <div className="modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Ajouter un contact">
+        <h2>Ajouter un contact</h2>
+        <p className="modal-sub">Le contact est créé directement dans « À appeler ».</p>
+        <form onSubmit={handleSubmit}>
+          <div className="form-field">
+            <label htmlFor="add-company">Entreprise *</label>
+            <input id="add-company" ref={companyRef} value={company} onChange={(e) => setCompany(e.target.value)} required />
+          </div>
+          <div className="form-field">
+            <label htmlFor="add-gerant">Gérant</label>
+            <input id="add-gerant" value={gerant} onChange={(e) => setGerant(e.target.value)} />
+          </div>
+          <div className="form-field">
+            <label htmlFor="add-phone">Téléphone</label>
+            <input id="add-phone" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
+          </div>
+          <div className="form-field">
+            <label htmlFor="add-ville">Ville</label>
+            <select id="add-ville" value={villeChoice} onChange={(e) => setVilleChoice(e.target.value)}>
+              <option value="">Aucune ville</option>
+              {cities.map((v) => <option key={v} value={v}>{v}</option>)}
+              <option value={NEW_CITY_VALUE}>+ Nouvelle ville…</option>
+            </select>
+            {isNewVille && (
+              <input
+                className="add-ville-new"
+                value={newVille}
+                onChange={(e) => setNewVille(e.target.value)}
+                placeholder="Nom de la nouvelle ville"
+                autoFocus
+              />
+            )}
+          </div>
+          <div className="form-field">
+            <label htmlFor="add-address">Adresse</label>
+            <input id="add-address" value={address} onChange={(e) => setAddress(e.target.value)} />
+          </div>
+          <div className="form-field">
+            <label htmlFor="add-website">Site web</label>
+            <input id="add-website" value={website} onChange={(e) => setWebsite(e.target.value)} />
+          </div>
+          <div className="form-actions">
+            <button type="button" className="btn ghost" onClick={onCancel}>Annuler</button>
+            <button type="submit" className="btn primary" disabled={!canSubmit}>Créer le contact</button>
+          </div>
+        </form>
+      </div>
     </div>
   )
 }
