@@ -511,6 +511,229 @@ body::before {
   margin-top: 16px;
 }
 
+/* ---- Menu des espaces (page d'accueil) ---- */
+
+.menu {
+  position: relative;
+  z-index: 1;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+  padding: 40px 20px;
+}
+.menu-header { text-align: center; }
+.menu-header h1 { margin: 0 0 6px; font-size: 30px; letter-spacing: .01em; }
+.menu-sub { margin: 0; color: var(--muted); font-size: 15px; }
+
+.menu-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 16px;
+  width: min(680px, 100%);
+}
+
+.space-card {
+  font: inherit;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 28px 18px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+  transition: transform .12s ease, border-color .12s ease, background .12s ease;
+}
+.space-card:hover {
+  transform: translateY(-2px);
+  border-color: #3b6fe0;
+  background: var(--surface-2);
+}
+.space-card-initial {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background: #3b6fe0;
+  color: #fff;
+  font-size: 24px;
+  font-weight: 700;
+}
+.space-card-name { font-size: 19px; font-weight: 700; }
+.space-card-count { font-size: 13px; color: var(--muted); }
+
+.menu-foot {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+  max-width: 420px;
+}
+
+/* ---- En-tête d'un espace : retour au menu + nom du setter ---- */
+
+.topbar-title { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.back-btn {
+  flex: none;
+  font: inherit;
+  font-size: 17px;
+  line-height: 1;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--ink);
+  cursor: pointer;
+}
+.back-btn:hover { background: #24304c; border-color: #3b6fe0; }
+.space-name {
+  display: inline-block;
+  padding: 3px 10px;
+  margin-left: 4px;
+  border-radius: 999px;
+  background: #3b6fe0;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+/* ---- Bandeau d'information après un import ---- */
+
+.notice {
+  flex: none;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: #bfdbfe;
+  background: rgba(59, 111, 224, .14);
+  border: 1px solid rgba(59, 111, 224, .45);
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+.notice-close {
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 4px;
+  border-radius: 50%;
+}
+.notice-close:hover { background: rgba(255, 255, 255, .1); }
+
+/* ---- Modale d'import : choix ajouter / remplacer ---- */
+
+.import-choices { display: flex; flex-direction: column; gap: 10px; }
+.import-choice {
+  font: inherit;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 14px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--ink);
+  cursor: pointer;
+}
+.import-choice:hover { border-color: #3b6fe0; background: #24304c; }
+.import-choice-title { font-size: 15px; font-weight: 700; }
+.import-choice-desc { font-size: 13px; color: var(--muted); line-height: 1.45; }
+/* L'option destructive est visuellement distincte pour qu'on ne la choisisse
+   jamais par inadvertance (elle demande en plus une seconde confirmation). */
+.import-choice.danger { border-color: rgba(248, 113, 113, .45); }
+.import-choice.danger:hover { border-color: #f87171; background: rgba(248, 113, 113, .12); }
+.import-choice.danger .import-choice-title { color: #fca5a5; }
+
+.modal-danger-title { color: #fca5a5; }
+.btn.danger { background: #b91c1c; border-color: #b91c1c; color: #fff; }
+.btn.danger:hover { background: #991b1b; }
+
+/* ---- Date/heure de relance (colonne « Rappel -7 jours ») ---- */
+
+/* Grille : ligne 1 = libellé + croix, lignes 2 et 3 = date puis heure, chacune
+   sur toute la largeur. Les colonnes font 180 px, donc tout champ posé sur la
+   même ligne qu'un autre finit tronqué. */
+.followup-field {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 4px 6px;
+  margin-top: 6px;
+  padding: 6px 7px;
+  border-radius: 7px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, .03);
+}
+.followup-label {
+  grid-column: 1;
+  grid-row: 1;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--muted);
+}
+.followup-clear {
+  grid-column: 2;
+  grid-row: 1;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1;
+  padding: 4px;
+  border-radius: 50%;
+}
+.followup-clear:hover { background: rgba(255, 255, 255, .1); color: var(--ink); }
+
+.followup-input {
+  grid-column: 1 / -1;
+  width: 100%;
+  min-width: 0;
+  font: inherit;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  padding: 4px 5px;
+  border-radius: 5px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--ink);
+}
+.followup-input:focus { outline: none; border-color: #3b6fe0; }
+.followup-input:disabled { opacity: .45; cursor: not-allowed; }
+/* Le sélecteur natif est noir sur fond sombre : on l'inverse pour le voir. */
+.followup-input::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+  opacity: .55;
+  cursor: pointer;
+  padding: 0;
+  margin-left: 2px;
+}
+.followup-input::-webkit-calendar-picker-indicator:hover { opacity: 1; }
+
+/* Échéance dépassée : signalée sans masquer le reste de la carte. */
+.followup-field.overdue {
+  border-color: rgba(248, 113, 113, .5);
+  background: rgba(248, 113, 113, .1);
+}
+.followup-field.overdue .followup-label { color: #fca5a5; }
+
 /* Mobile : une seule colonne visible à la fois, sélectionnée par la barre
    d'onglets. Le glisser-déposer HTML5 étant peu fiable au doigt, chaque
    contact affiche en plus un menu « Déplacer vers » (voir .move-menu).
@@ -567,4 +790,15 @@ body::before {
   .note-close { min-height: 44px; padding: 10px 16px; }
   .move-menu-item { min-height: 44px; font-size: 14px; }
   .move-menu-wrap { display: inline-flex; }
+
+  /* Le nom du setter reste lisible sans écraser la barre de recherche. */
+  .topbar-title { flex: 1 1 100%; }
+  .topbar h1 { font-size: 18px; }
+  .back-btn { min-width: 44px; min-height: 44px; }
+  .actions { flex-wrap: wrap; }
+  .menu-grid { grid-template-columns: 1fr; }
+  .space-card { min-height: 44px; }
+
+  .followup-input { font-size: 15px; min-height: 40px; }
+  .followup-clear { min-width: 40px; min-height: 40px; }
 }

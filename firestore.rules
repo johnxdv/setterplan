@@ -1,16 +1,21 @@
 rules_version = '2';
 
-// Règles minimales pour que le tableau se synchronise entre appareils.
+// Règles minimales pour que les tableaux se synchronisent entre appareils.
 // À déployer dans la console Firebase (Firestore Database > Règles) ou via
 //   firebase deploy --only firestore:rules
 //
+// Un document par espace de travail : board/victor, board/alice,
+// board/jeyson. board/current est l'ancien document unique, conservé comme
+// sauvegarde de la migration vers board/victor — il reste accessible en
+// lecture/écriture pour permettre un retour en arrière.
+//
 // ATTENTION : en l'état, n'importe qui connaissant l'ID du projet peut lire et
-// écrire le tableau. C'est acceptable pour un usage interne à faible enjeu ;
+// écrire ces tableaux. C'est acceptable pour un usage interne à faible enjeu ;
 // sinon, activez l'authentification et remplacez la condition par
 //   allow read, write: if request.auth != null;
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /board/current {
+    match /board/{spaceId} {
       allow read, write: if true;
     }
   }
