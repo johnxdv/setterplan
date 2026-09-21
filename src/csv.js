@@ -115,6 +115,7 @@ export function parseContacts(text) {
       extras,
       note: '',
       starred: false,
+      called: false,
       followUpAt: '',
       column: 'todo',
     }

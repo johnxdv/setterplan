@@ -84,6 +84,10 @@ function sanitize(raw) {
         extras,
         note: typeof c.note === 'string' ? c.note : '',
         starred: c.starred === true,
+        // Absent sur les contacts antérieurs à ce champ : ils valent « non
+        // appelé ». Pas de migration à part — persist() ré-écrit le tableau
+        // entier, donc le champ est stocké dès la prochaine action.
+        called: c.called === true,
         followUpAt: typeof c.followUpAt === 'string' ? c.followUpAt : '',
         column: COLUMN_IDS.has(c.column) ? c.column : 'todo',
         classifiedAt: typeof c.classifiedAt === 'number' ? c.classifiedAt : 0,
@@ -233,6 +237,12 @@ export default function Board({ space, onBack }) {
     persist(cardsRef.current.map((c) => (c.id === id ? { ...c, starred: !c.starred } : c)))
   }
 
+  // Indépendant des colonnes : ne touche ni column ni classifiedAt, et
+  // moveCard() ne touche pas called.
+  function toggleCalled(id) {
+    persist(cardsRef.current.map((c) => (c.id === id ? { ...c, called: !c.called } : c)))
+  }
+
   function setNote(id, note) {
     persist(cardsRef.current.map((c) => (c.id === id ? { ...c, note } : c)))
   }
@@ -264,6 +274,7 @@ export default function Board({ space, onBack }) {
       extras: [],
       note: '',
       starred: false,
+      called: false,
       followUpAt: '',
       column: 'todo',
       classifiedAt: 0,
@@ -453,6 +464,7 @@ export default function Board({ space, onBack }) {
               cityFilter={cityFilter}
               onCityFilterChange={setCityFilter}
               onToggleStar={toggleStar}
+              onToggleCalled={toggleCalled}
               onSetNote={setNote}
               onMoveCard={moveCard}
               matchedIds={matchedIds}
@@ -464,6 +476,7 @@ export default function Board({ space, onBack }) {
               setDragOverId={setDragOverId}
               onDropTo={onDropTo}
               onToggleStar={toggleStar}
+              onToggleCalled={toggleCalled}
               onSetNote={setNote}
               onSetFollowUp={setFollowUp}
               onMoveCard={moveCard}
@@ -612,6 +625,22 @@ function StarButton({ starred, onClick }) {
       title={starred ? "Retirer l'étoile" : 'Mettre une étoile'}
     >
       {starred ? '★' : '☆'}
+    </button>
+  )
+}
+
+// Tag « Appelé / Non appelé », dans la ligne compacte (donc visible sans
+// déplier la carte, et toujours présent quand elle est dépliée).
+function CalledBadge({ called, onClick }) {
+  return (
+    <button
+      type="button"
+      className={`called-badge ${called ? 'on' : ''}`}
+      onClick={onClick}
+      aria-pressed={called}
+      title={called ? 'Marquer comme non appelé' : 'Marquer comme appelé'}
+    >
+      {called ? 'Appelé' : 'Non appelé'}
     </button>
   )
 }
@@ -770,7 +799,7 @@ function DetailRow({ label, value }) {
 
 // Colonne de gauche : liste compacte, pas de cartes, pas de zone de dépôt
 // (aucun onDragOver/onDrop ici) — on ne peut qu'en faire sortir des contacts.
-function TodoList({ cards, cities, cityFilter, onCityFilterChange, onToggleStar, onSetNote, onMoveCard, matchedIds, onAddContact }) {
+function TodoList({ cards, cities, cityFilter, onCityFilterChange, onToggleStar, onToggleCalled, onSetNote, onMoveCard, matchedIds, onAddContact }) {
   return (
     <aside className="sidebar" data-tab="todo">
       <div className="sidebar-header">
@@ -809,6 +838,7 @@ function TodoList({ cards, cities, cityFilter, onCityFilterChange, onToggleStar,
             key={card.id}
             card={card}
             onToggleStar={onToggleStar}
+            onToggleCalled={onToggleCalled}
             onSetNote={onSetNote}
             onMoveCard={onMoveCard}
             highlighted={matchedIds?.has(card.id)}
@@ -823,7 +853,7 @@ function TodoList({ cards, cities, cityFilter, onCityFilterChange, onToggleStar,
 // catégories fixes : liste compacte (entreprise, gérant, téléphone) qui se
 // déplie au clic pour révéler le détail et la note. Seul le conteneur qui
 // l'accueille (et donc la colonne de destination au drop) change.
-function ContactRow({ card, onToggleStar, onSetNote, onMoveCard, onSetFollowUp, highlighted }) {
+function ContactRow({ card, onToggleStar, onToggleCalled, onSetNote, onMoveCard, onSetFollowUp, highlighted }) {
   const [expanded, setExpanded] = useState(false)
   const [moveMenuOpen, setMoveMenuOpen] = useState(false)
   const hasDetail = card.address || card.ville || card.website || card.extras.length > 0
@@ -879,6 +909,7 @@ function ContactRow({ card, onToggleStar, onSetNote, onMoveCard, onSetFollowUp, 
           </a>
         )}
         <span className="contact-row-tools">
+          <CalledBadge called={card.called} onClick={(e) => { e.stopPropagation(); onToggleCalled(card.id) }} />
           <StarButton starred={card.starred} onClick={(e) => { e.stopPropagation(); onToggleStar(card.id) }} />
           <NoteField card={card} onSetNote={onSetNote} />
           {onMoveCard && (
@@ -932,7 +963,7 @@ function ContactRow({ card, onToggleStar, onSetNote, onMoveCard, onSetFollowUp, 
 // Les 5 colonnes fixes : uniquement des zones de dépôt, ne bougent jamais.
 // Chaque contact y est affiché avec le même ContactRow que « À appeler » ;
 // on le reclasse par glisser-déposer d'une colonne à l'autre.
-function BoardColumns({ cards, dragOverId, setDragOverId, onDropTo, onToggleStar, onSetNote, onSetFollowUp, onMoveCard, matchedIds }) {
+function BoardColumns({ cards, dragOverId, setDragOverId, onDropTo, onToggleStar, onToggleCalled, onSetNote, onSetFollowUp, onMoveCard, matchedIds }) {
   return (
     <div className="board-columns">
       {COLUMNS.map((col) => {
@@ -965,6 +996,7 @@ function BoardColumns({ cards, dragOverId, setDragOverId, onDropTo, onToggleStar
                   key={card.id}
                   card={card}
                   onToggleStar={onToggleStar}
+                  onToggleCalled={onToggleCalled}
                   onSetNote={onSetNote}
                   onMoveCard={onMoveCard}
                   onSetFollowUp={col.id === FOLLOWUP_COLUMN_ID ? onSetFollowUp : null}

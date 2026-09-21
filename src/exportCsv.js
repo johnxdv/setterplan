@@ -16,6 +16,7 @@ const FIELDS = [
   { header: 'Téléphone', value: (c) => c.phone },
   { header: 'Ville', value: (c) => c.ville },
   { header: 'Catégorie', value: (c) => columnTitle(c.column) },
+  { header: 'Appelé', value: (c) => (c.called ? 'Oui' : 'Non') },
   { header: 'Date de relance', value: (c) => formatFollowUp(c.followUpAt) },
   { header: 'Note', value: (c) => c.note },
 ]
