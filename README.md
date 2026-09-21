@@ -31,8 +31,21 @@ Son document `board/nouveau` est créé au premier import. Ne jamais renommer un
 
 ```
 npm install
+echo "APP_PASSWORD=..." > .env.local   # mot de passe de l'écran d'accès
 npm run dev
 ```
+
+## Mot de passe d'accès
+
+Un écran de mot de passe partagé précède le menu des espaces. Le mot de passe
+vient de la variable d'environnement `APP_PASSWORD` (Vercel > Settings >
+Environment Variables en production, `.env.local` non versionné en local) ; le
+build échoue s'il manque. Seule son empreinte SHA-256 est intégrée au bundle.
+Une fois saisi, l'accès tient jusqu'à la fermeture de l'onglet. Changer
+`APP_PASSWORD` puis redéployer redemande le mot de passe à tout le monde.
+
+C'est un simple frein : la vérification a lieu dans le navigateur, et les
+règles Firestore restent ouvertes.
 
 ## Utilisation
 
