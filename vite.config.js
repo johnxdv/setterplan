@@ -21,6 +21,8 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react()],
+    // Port imposé par l'outil qui lance le serveur de dev, s'il en fournit un.
+    server: process.env.PORT ? { port: Number(process.env.PORT) } : {},
     define: { __APP_PASSWORD_HASH__: JSON.stringify(hash) },
   }
 })

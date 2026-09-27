@@ -2,13 +2,14 @@
 // totalement indépendant : ses contacts vivent dans son propre document
 // Firestore (board/<id>), jamais partagé avec un autre espace.
 //
-// Ajouter un 4e setter = ajouter une ligne ici, rien d'autre. Ne jamais
+// Ajouter un setter = ajouter une ligne ici, rien d'autre. Ne jamais
 // changer l'`id` d'un espace existant : c'est la clé de son document
 // Firestore, donc de ses données.
 export const SPACES = [
   { id: 'victor', name: 'Victor' },
   { id: 'alice', name: 'Alice' },
   { id: 'jeyson', name: 'Jeyson' },
+  { id: 'nadege', name: 'Nadège' },
 ]
 
 export const getSpace = (id) => SPACES.find((s) => s.id === id) || null
