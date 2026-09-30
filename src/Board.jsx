@@ -5,6 +5,31 @@ import { boardRefFor } from './firebase.js'
 import { LEGACY_SPACE_ID } from './spaces.js'
 import { COLUMNS, COLUMN_IDS, FOLLOWUP_COLUMN_ID } from './columns.js'
 import { downloadContactsCsv } from './exportCsv.js'
+import {
+  ALL_ZONES,
+  UNKNOWN_ZONE_LABEL,
+  ZONES,
+  buildCityZones,
+  cardInZone,
+  cityInZone,
+  zoneCounts,
+  zoneLabel,
+} from './zones.js'
+
+// Dernière zone choisie, par espace : le setter ne la rechoisit pas à chaque
+// ouverture. localStorage, comme le reste des préférences du navigateur ; en
+// navigation privée la lecture échoue, on retombe alors sur l'écran de choix.
+const zoneStorageKey = (spaceId) => `setterplan-zone:${spaceId}`
+const VALID_ZONES = new Set([...ZONES.map((z) => z.id), ALL_ZONES])
+
+function readStoredZone(spaceId) {
+  try {
+    const value = localStorage.getItem(zoneStorageKey(spaceId))
+    return VALID_ZONES.has(value) ? value : null
+  } catch {
+    return null
+  }
+}
 
 const normLabel = (s) =>
   s
@@ -110,6 +135,9 @@ export default function Board({ space, onBack }) {
   // false tant que le document de l'espace n'existe pas encore côté serveur.
   const [docExists, setDocExists] = useState(true)
   const [cityFilter, setCityFilter] = useState('')
+  // null = zone pas encore choisie : l'écran Sud / Nord s'affiche avant la
+  // liste des villes (premier lancement, ou après « Changer de zone »).
+  const [zone, setZone] = useState(() => readStoredZone(space.id))
   const [dragOverId, setDragOverId] = useState(null)
   const [activeTab, setActiveTab] = useState('todo')
   const [searchQuery, setSearchQuery] = useState('')
@@ -292,17 +320,47 @@ export default function Board({ space, onBack }) {
     if (id) moveCard(id, columnId)
   }
 
+  // Zone de chaque ville, calculée sur TOUTES les cartes de l'espace (pas
+  // seulement « À appeler ») : une ville garde la même zone où qu'en soient
+  // ses contacts.
+  const cityZones = useMemo(() => buildCityZones(cards), [cards])
+  const counts = useMemo(() => zoneCounts(cards, cityZones), [cards, cityZones])
+
+  // Villes proposées dans le filtre : celles de la zone choisie, plus celles
+  // dont la zone est indéterminée (jamais cachées).
   const cities = useMemo(() => {
     const set = new Set()
-    for (const c of cards) if (c.ville) set.add(c.ville)
+    for (const c of cards) {
+      const ville = (c.ville || '').trim()
+      if (ville && cityInZone(cityZones.get(ville) ?? null, zone)) set.add(ville)
+    }
     return [...set].sort((a, b) => a.localeCompare(b, 'fr'))
-  }, [cards])
+  }, [cards, cityZones, zone])
+
+  // Une ville filtrée qui n'appartient plus à la zone affichée est abandonnée,
+  // sinon la liste resterait vide sans explication.
+  useEffect(() => {
+    if (cityFilter && !cities.includes(cityFilter)) setCityFilter('')
+  }, [cities, cityFilter])
 
   const todoCards = useMemo(() => {
     let list = cards.filter((c) => c.column === 'todo')
     if (cityFilter) list = list.filter((c) => c.ville === cityFilter)
+    else list = list.filter((c) => cardInZone(c, cityZones, zone))
     return list
-  }, [cards, cityFilter])
+  }, [cards, cityFilter, cityZones, zone])
+
+  function chooseZone(next) {
+    setZone(next)
+    setCityFilter('')
+    try { localStorage.setItem(zoneStorageKey(space.id), next) } catch { /* navigation privée */ }
+  }
+
+  function changeZone() {
+    setZone(null)
+    setCityFilter('')
+    try { localStorage.removeItem(zoneStorageKey(space.id)) } catch { /* navigation privée */ }
+  }
 
   const searchTerm = normLabel(searchQuery.trim())
   const searchDigits = searchQuery.replace(/\D/g, '')
@@ -351,6 +409,19 @@ export default function Board({ space, onBack }) {
           <h1>
             Planning d'appel <span className="space-name">{space.name}</span>
           </h1>
+          {zone && (
+            <button
+              type="button"
+              className="zone-chip"
+              onClick={changeZone}
+              title="Revenir au choix Sud / Nord"
+            >
+              <span className="zone-chip-label">
+                {zone === ALL_ZONES ? 'Toutes les villes' : zoneLabel(zone)}
+              </span>
+              <span className="zone-chip-action">Changer de zone</span>
+            </button>
+          )}
         </div>
         <div className="search-bar">
           <div className="search-input-wrap">
@@ -435,6 +506,8 @@ export default function Board({ space, onBack }) {
 
       {!loaded ? (
         <p className="hint">Chargement du tableau…</p>
+      ) : !zone ? (
+        <ZonePicker counts={counts} onChoose={chooseZone} />
       ) : (
         <>
           <nav className="mobile-tabs">
@@ -461,6 +534,8 @@ export default function Board({ space, onBack }) {
             <TodoList
               cards={todoCards}
               cities={cities}
+              cityZones={cityZones}
+              zone={zone}
               cityFilter={cityFilter}
               onCityFilterChange={setCityFilter}
               onToggleStar={toggleStar}
@@ -797,9 +872,57 @@ function DetailRow({ label, value }) {
   )
 }
 
+// Premier choix du setter : la zone géographique, avant la liste des villes.
+// Les villes sans code postal exploitable comptent dans les deux zones, elles
+// apparaissent donc des deux côtés : aucun contact ne peut disparaître.
+function ZonePicker({ counts, onChoose }) {
+  return (
+    <div className="zone-picker">
+      <header className="zone-picker-header">
+        <h2>Quelle zone appelez-vous ?</h2>
+        <p className="zone-picker-sub">
+          Seules les villes de la zone choisie seront proposées. Vous pourrez en changer à tout
+          moment.
+        </p>
+      </header>
+      <div className="zone-grid">
+        {ZONES.map((z) => {
+          const { cities, contacts } = counts[z.id]
+          return (
+            <button
+              key={z.id}
+              type="button"
+              className="zone-card"
+              onClick={() => onChoose(z.id)}
+            >
+              <span className="zone-card-name">{z.label}</span>
+              <span className="zone-card-hint">{z.hint}</span>
+              <span className="zone-card-count">
+                {cities} ville{cities > 1 ? 's' : ''} · {contacts} contact{contacts > 1 ? 's' : ''}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+      <button type="button" className="btn ghost zone-all" onClick={() => onChoose(ALL_ZONES)}>
+        Toutes les villes ({counts[ALL_ZONES].cities} ville
+        {counts[ALL_ZONES].cities > 1 ? 's' : ''} · {counts[ALL_ZONES].contacts} contact
+        {counts[ALL_ZONES].contacts > 1 ? 's' : ''})
+      </button>
+      {counts.unknownCities > 0 && (
+        <p className="zone-picker-foot">
+          {counts.unknownCities} ville{counts.unknownCities > 1 ? 's' : ''} sans code postal
+          exploitable : elle{counts.unknownCities > 1 ? 's apparaissent' : ' apparaît'} dans les deux
+          zones ({UNKNOWN_ZONE_LABEL}).
+        </p>
+      )}
+    </div>
+  )
+}
+
 // Colonne de gauche : liste compacte, pas de cartes, pas de zone de dépôt
 // (aucun onDragOver/onDrop ici) — on ne peut qu'en faire sortir des contacts.
-function TodoList({ cards, cities, cityFilter, onCityFilterChange, onToggleStar, onToggleCalled, onSetNote, onMoveCard, matchedIds, onAddContact }) {
+function TodoList({ cards, cities, cityZones, zone, cityFilter, onCityFilterChange, onToggleStar, onToggleCalled, onSetNote, onMoveCard, matchedIds, onAddContact }) {
   return (
     <aside className="sidebar" data-tab="todo">
       <div className="sidebar-header">
@@ -823,9 +946,11 @@ function TodoList({ cards, cities, cityFilter, onCityFilterChange, onToggleStar,
           onChange={(e) => onCityFilterChange(e.target.value)}
           aria-label="Filtrer par ville"
         >
-          <option value="">Toutes les villes</option>
+          <option value="">{zone === ALL_ZONES ? 'Toutes les villes' : `Toutes les villes — ${zoneLabel(zone)}`}</option>
           {cities.map((v) => (
-            <option key={v} value={v}>{v}</option>
+            <option key={v} value={v}>
+              {cityZones.get(v) == null ? `${v} (${UNKNOWN_ZONE_LABEL})` : v}
+            </option>
           ))}
         </select>
       </div>
