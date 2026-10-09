@@ -600,6 +600,7 @@ body::before {
 .gate-form .form-field input { font-size: 16px; min-height: 44px; }
 .gate-error { margin: 0 0 12px; }
 .gate-submit { min-height: 44px; font-size: 15px; }
+.gate-cancel { min-height: 40px; margin-top: 10px; }
 
 /* ---- En-tête d'un espace : retour au menu + nom du setter ---- */
 

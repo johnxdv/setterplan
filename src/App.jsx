@@ -2,9 +2,9 @@ import { useCallback, useEffect, useState } from 'react'
 import { onSnapshot } from 'firebase/firestore'
 import { SPACES, getSpace } from './spaces.js'
 import { boardRefFor } from './firebase.js'
-import { dealsCollection } from './dealsStore.js'
 import Board from './Board.jsx'
 import Closing from './Closing.jsx'
+import PasswordGate from './PasswordGate.jsx'
 
 // L'espace de closing n'est pas un tableau de setter : pas de contacts, pas
 // de colonnes, et ses données vivent dans la collection « deals ». Il a donc
@@ -32,7 +32,20 @@ export default function App() {
   const openSpace = useCallback((id) => { window.location.hash = `#/${id}` }, [])
   const backToMenu = useCallback(() => { window.location.hash = '#/' }, [])
 
-  if (spaceId === CLOSING_ID) return <Closing onBack={backToMenu} />
+  // Second mot de passe, propre au closing : les espaces des setters
+  // s'ouvrent sans lui. Déverrouillé, l'accès tient pour l'onglet.
+  if (spaceId === CLOSING_ID) {
+    return (
+      <PasswordGate
+        hash={__CLOSING_PASSWORD_HASH__}
+        storageKey="setterplan-closing-unlocked"
+        sub="Entrez le mot de passe de l'espace Closing."
+        onCancel={backToMenu}
+      >
+        <Closing onBack={backToMenu} />
+      </PasswordGate>
+    )
+  }
 
   const space = spaceId ? getSpace(spaceId) : null
   if (!space) return <SpaceMenu onOpen={openSpace} />
@@ -47,16 +60,6 @@ export default function App() {
 // direct sur le document de chaque espace (lecture seule).
 function SpaceMenu({ onOpen }) {
   const [counts, setCounts] = useState({})
-  const [openDeals, setOpenDeals] = useState(null)
-
-  // Compteur de l'espace de closing : les deals encore en cours.
-  useEffect(() => {
-    return onSnapshot(
-      dealsCollection(),
-      (snap) => setOpenDeals(snap.docs.filter((d) => (d.data().status || 'open') === 'open').length),
-      () => setOpenDeals(null)
-    )
-  }, [])
 
   useEffect(() => {
     const unsubscribes = SPACES.map((s) =>
@@ -96,14 +99,8 @@ function SpaceMenu({ onOpen }) {
         <button type="button" className="space-card closing-card" onClick={() => onOpen(CLOSING_ID)}>
           <span className="space-card-initial" aria-hidden="true">€</span>
           <span className="space-card-name">Closing</span>
-          <span className="space-card-count">
-            {openDeals == null ? '—' : `${openDeals} deal${openDeals > 1 ? 's' : ''} en cours`}
-          </span>
         </button>
       </div>
-      <p className="menu-foot">
-        Chaque espace a ses propres contacts : une action dans l'un n'affecte jamais les autres.
-      </p>
     </div>
   )
 }

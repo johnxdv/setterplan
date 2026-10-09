@@ -6,7 +6,11 @@ import './styles.css'
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <PasswordGate>
+    <PasswordGate
+      hash={__APP_PASSWORD_HASH__}
+      storageKey="setterplan-unlocked"
+      sub="Entrez le mot de passe pour accéder aux espaces."
+    >
       <App />
     </PasswordGate>
   </React.StrictMode>
