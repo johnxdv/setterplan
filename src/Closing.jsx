@@ -1,23 +1,29 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  ASSIGNEES,
   DEAL_STATES,
   HEATS,
   UNASSIGNED,
-  ASSIGNEES,
   addDays,
+  addMonths,
   dayName,
   dayNumber,
+  dealAuthor,
   dealTotal,
+  daysBetween,
   formatDate,
   formatEuros,
-  daysBetween,
   heatLabel,
+  historyEntry,
   isLate,
   isOpen,
   isUnplanned,
-  historyEntry,
   makeDeal,
+  monthLabel,
+  monthKey,
   pipelineStats,
+  sameMonth,
+  startOfMonth,
   startOfWeek,
   todayIso,
 } from './deals.js'
@@ -26,25 +32,14 @@ import { buildSeedDeals } from './seedDeals.js'
 import DealPanel, { NewDealModal } from './DealPanel.jsx'
 import { AllDeals, ClosedDeals } from './DealsTables.jsx'
 
-// Qui agit : l'outil n'a pas de comptes (un seul mot de passe partagé), donc
-// l'auteur des lignes d'historique est choisi une fois ici et mémorisé dans
-// le navigateur, comme la zone des espaces setters.
-const AUTHOR_KEY = 'setterplan-closing-author'
-
-function readAuthor() {
-  try {
-    const value = localStorage.getItem(AUTHOR_KEY)
-    return ASSIGNEES.includes(value) ? value : UNASSIGNED
-  } catch {
-    return UNASSIGNED
-  }
-}
-
 const TABS = [
   { id: 'calendar', label: 'Calendrier' },
   { id: 'all', label: 'Tous les deals' },
   { id: 'closed', label: 'Signés et perdus' },
 ]
+
+// Nombre de cartes visibles dans une case du mois avant le « +N ».
+const CARDS_PER_DAY = 3
 
 export default function Closing({ onBack }) {
   const [deals, setDeals] = useState([])
@@ -52,15 +47,15 @@ export default function Closing({ onBack }) {
   const [loaded, setLoaded] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
-  const [author, setAuthor] = useState(readAuthor)
   const [tab, setTab] = useState('calendar')
   const [selectedId, setSelectedId] = useState(null)
   const [newDealOpen, setNewDealOpen] = useState(false)
 
   const today = todayIso()
-  const [weekStart, setWeekStart] = useState(() => startOfWeek(todayIso()))
+  const [monthStart, setMonthStart] = useState(() => startOfMonth(todayIso()))
   const [filters, setFilters] = useState({ closer: 'all', heat: 'all', state: 'all' })
   const seedAttempted = useRef(false)
+  const planAttempted = useRef(false)
 
   useEffect(() => {
     const unsubscribe = watchDeals(
@@ -96,6 +91,24 @@ export default function Closing({ onBack }) {
       })
   }, [loaded, status])
 
+  // La date de prochaine action est obligatoire pour un deal en cours. Les
+  // fiches plus anciennes qui n'en ont pas sont datées d'aujourd'hui : elles
+  // remontent dans « À faire aujourd'hui » au lieu de disparaître.
+  useEffect(() => {
+    if (!loaded || planAttempted.current || status === 'denied') return
+    const orphans = deals.filter(isUnplanned)
+    if (orphans.length === 0) return
+    planAttempted.current = true
+    for (const deal of orphans) {
+      saveDeal({
+        ...deal,
+        nextActionDate: today,
+        history: [...deal.history, historyEntry(dealAuthor(deal), 'Prochaine action datée à aujourd\'hui (aucune date)')],
+      }).catch(() => setStatus('offline'))
+    }
+    setNotice(`${orphans.length} deal${orphans.length > 1 ? 's' : ''} sans date replacé${orphans.length > 1 ? 's' : ''} sur aujourd'hui.`)
+  }, [loaded, status, deals, today])
+
   const persist = useCallback((deal) => {
     setDeals((prev) => prev.map((d) => (d.id === deal.id ? deal : d)))
     saveDeal(deal).catch((err) => {
@@ -103,31 +116,23 @@ export default function Closing({ onBack }) {
     })
   }, [])
 
-  // Toute modification suivie d'une trace : l'historique n'est jamais réécrit,
-  // on ne fait qu'y ajouter une ligne à la fin.
+  // Toute modification suivie d'une trace, signée par le closer du deal.
+  // L'historique n'est jamais réécrit, on ne fait qu'y ajouter une ligne.
   const persistWithHistory = useCallback(
     (deal, note) => {
-      persist({ ...deal, history: [...deal.history, historyEntry(author, note)] })
+      persist({ ...deal, history: [...deal.history, historyEntry(dealAuthor(deal), note)] })
     },
-    [persist, author]
+    [persist]
   )
 
-  const createDeal = useCallback(
-    (partial) => {
-      const deal = makeDeal(partial)
-      deal.history = [historyEntry(author, 'Fiche créée')]
-      setDeals((prev) => [...prev, deal])
-      saveDeal(deal).catch(() => setStatus('offline'))
-      setSelectedId(deal.id)
-      return deal
-    },
-    [author]
-  )
-
-  function changeAuthor(value) {
-    setAuthor(value)
-    try { localStorage.setItem(AUTHOR_KEY, value) } catch { /* navigation privée */ }
-  }
+  const createDeal = useCallback((partial) => {
+    const deal = makeDeal(partial)
+    deal.history = [historyEntry(dealAuthor(deal), 'Fiche créée')]
+    setDeals((prev) => [...prev, deal])
+    saveDeal(deal).catch(() => setStatus('offline'))
+    setSelectedId(deal.id)
+    return deal
+  }, [])
 
   const stats = useMemo(() => pipelineStats(deals, today), [deals, today])
   const selected = deals.find((d) => d.id === selectedId) || null
@@ -149,10 +154,11 @@ export default function Closing({ onBack }) {
   // une ligne d'historique.
   function moveDealTo(id, date) {
     const deal = deals.find((d) => d.id === id)
-    if (!deal || deal.nextActionDate === date) return
-    const from = deal.nextActionDate ? formatDate(deal.nextActionDate) : 'À planifier'
-    const to = date ? formatDate(date) : 'À planifier'
-    persistWithHistory({ ...deal, nextActionDate: date }, `Reporté du ${from} au ${to}`)
+    if (!deal || !date || deal.nextActionDate === date) return
+    persistWithHistory(
+      { ...deal, nextActionDate: date },
+      `Reporté du ${formatDate(deal.nextActionDate)} au ${formatDate(date)}`
+    )
   }
 
   return (
@@ -174,12 +180,6 @@ export default function Closing({ onBack }) {
         </div>
         <div className="actions">
           <ClosingStatus status={status} />
-          <label className="author-picker">
-            <span>Je suis</span>
-            <select value={author} onChange={(e) => changeAuthor(e.target.value)}>
-              {ASSIGNEES.map((p) => <option key={p} value={p}>{p}</option>)}
-            </select>
-          </label>
           <button className="btn primary" onClick={() => setNewDealOpen(true)}>Nouveau deal</button>
         </div>
       </header>
@@ -217,11 +217,11 @@ export default function Closing({ onBack }) {
       {!loaded ? (
         <p className="hint">Chargement des deals…</p>
       ) : tab === 'calendar' ? (
-        <WeekCalendar
+        <MonthCalendar
           deals={visible}
           today={today}
-          weekStart={weekStart}
-          onWeekStart={setWeekStart}
+          monthStart={monthStart}
+          onMonthStart={setMonthStart}
           filters={filters}
           onFilters={setFilters}
           onOpen={setSelectedId}
@@ -236,7 +236,6 @@ export default function Closing({ onBack }) {
       {selected && (
         <DealPanel
           deal={selected}
-          author={author}
           today={today}
           onClose={() => setSelectedId(null)}
           onPersist={persist}
@@ -264,19 +263,15 @@ function StatsBand({ stats }) {
     <div className="stats-band">
       <Stat label="Pipe en cours" value={formatEuros(stats.pipe)} sub={`${stats.openCount} deal${stats.openCount > 1 ? 's' : ''}`} />
       <Stat label="Pipe pondéré" value={formatEuros(stats.weighted)} sub="selon la chaleur" />
+      <Stat label="CA signé total" value={formatEuros(stats.signedTotal)} sub="toutes périodes" />
       <Stat label="CA signé ce mois" value={formatEuros(stats.signedThisMonth)} />
-      <Stat
-        label="Relances en retard"
-        value={String(stats.lateCount)}
-        tone={stats.lateCount > 0 ? 'alert' : ''}
-      />
     </div>
   )
 }
 
-function Stat({ label, value, sub, tone }) {
+function Stat({ label, value, sub }) {
   return (
-    <div className={`stat ${tone || ''}`}>
+    <div className="stat">
       <span className="stat-label">{label}</span>
       <span className="stat-value">{value}</span>
       {sub && <span className="stat-sub">{sub}</span>}
@@ -284,20 +279,24 @@ function Stat({ label, value, sub, tone }) {
   )
 }
 
-// Calendrier de la semaine : « En retard » puis lundi → vendredi, le week-end
-// seulement s'il porte des cartes, et « À planifier » dessous.
-function WeekCalendar({ deals, today, weekStart, onWeekStart, filters, onFilters, onOpen, onMove }) {
-  const days = useMemo(() => Array.from({ length: 5 }, (_, i) => addDays(weekStart, i)), [weekStart])
-  const weekendDays = useMemo(() => [addDays(weekStart, 5), addDays(weekStart, 6)], [weekStart])
+// Vue mois (lundi → dimanche) avec, à gauche, ce qu'il y a à faire
+// aujourd'hui. Un deal en retard n'apparaît plus dans la grille : il reste
+// dans la colonne de gauche tant qu'il n'est pas traité ou reporté.
+function MonthCalendar({ deals, today, monthStart, onMonthStart, filters, onFilters, onOpen, onMove }) {
+  const [dragOver, setDragOver] = useState(null)
+  const [dayModal, setDayModal] = useState(null)
+  // Vue jour sur téléphone : la grille du mois n'y est pas lisible.
+  const [dayCursor, setDayCursor] = useState(today)
+
+  useEffect(() => {
+    if (!sameMonth(dayCursor, monthStart)) setDayCursor(monthStart)
+  }, [monthStart])
 
   const late = useMemo(
     () => deals.filter((d) => isLate(d, today)).sort((a, b) => a.nextActionDate.localeCompare(b.nextActionDate)),
     [deals, today]
   )
-  const unplanned = useMemo(() => deals.filter(isUnplanned), [deals])
 
-  // Une carte en retard reste dans « En retard » : elle ne réapparaît pas
-  // aussi dans sa colonne de jour, sinon elle se traiterait deux fois.
   const byDay = useMemo(() => {
     const map = new Map()
     for (const deal of deals) {
@@ -311,15 +310,21 @@ function WeekCalendar({ deals, today, weekStart, onWeekStart, filters, onFilters
     return map
   }, [deals, today])
 
-  const weekendCards = weekendDays.flatMap((d) => byDay.get(d) || [])
-  const [weekendOpen, setWeekendOpen] = useState(false)
-  const [dragOver, setDragOver] = useState(null)
+  const todayDeals = byDay.get(today) || []
 
-  // Vue jour sur téléphone : un seul jour visible à la fois (CSS), « En
-  // retard » restant accessible en premier onglet.
-  const inWeek = days.includes(today)
-  const [activeDay, setActiveDay] = useState(() => (inWeek ? today : 'late'))
-  useEffect(() => { setActiveDay(days.includes(today) ? today : days[0]) }, [weekStart])
+  // Grille : semaines entières, du lundi qui précède le 1er au dimanche qui
+  // suit le dernier jour du mois. Les jours des mois voisins restent
+  // affichés, en gris, et acceptent un dépôt (ce sont de vraies dates).
+  const weeks = useMemo(() => {
+    const nextMonth = addMonths(monthStart, 1)
+    const out = []
+    // Tant que le lundi de la semaine précède le 1er du mois suivant, la
+    // semaine contient au moins un jour du mois : on s'arrête juste après.
+    for (let cursor = startOfWeek(monthStart); cursor < nextMonth; cursor = addDays(cursor, 7)) {
+      out.push(Array.from({ length: 7 }, (_, i) => addDays(cursor, i)))
+    }
+    return out
+  }, [monthStart])
 
   const dropProps = (key, date) => ({
     onDragOver: (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; if (dragOver !== key) setDragOver(key) },
@@ -332,16 +337,16 @@ function WeekCalendar({ deals, today, weekStart, onWeekStart, filters, onFilters
     },
   })
 
+  const cursorDeals = byDay.get(dayCursor) || []
+
   return (
     <div className="calendar">
       <div className="cal-toolbar">
         <div className="cal-nav">
-          <button type="button" className="btn ghost" onClick={() => onWeekStart(addDays(weekStart, -7))} aria-label="Semaine précédente">←</button>
-          <button type="button" className="btn" onClick={() => onWeekStart(startOfWeek(today))}>Aujourd'hui</button>
-          <button type="button" className="btn ghost" onClick={() => onWeekStart(addDays(weekStart, 7))} aria-label="Semaine suivante">→</button>
-          <span className="cal-week-label">
-            Semaine du {formatDate(weekStart)} au {formatDate(addDays(weekStart, 6))}
-          </span>
+          <button type="button" className="btn ghost" onClick={() => onMonthStart(addMonths(monthStart, -1))} aria-label="Mois précédent">←</button>
+          <button type="button" className="btn" onClick={() => onMonthStart(startOfMonth(today))}>Aujourd'hui</button>
+          <button type="button" className="btn ghost" onClick={() => onMonthStart(addMonths(monthStart, 1))} aria-label="Mois suivant">→</button>
+          <span className="cal-week-label cal-month-label">{monthLabel(monthKey(monthStart))}</span>
         </div>
         <div className="cal-filters">
           <select value={filters.closer} onChange={(e) => onFilters({ ...filters, closer: e.target.value })} aria-label="Filtrer par closer">
@@ -359,118 +364,120 @@ function WeekCalendar({ deals, today, weekStart, onWeekStart, filters, onFilters
         </div>
       </div>
 
-      <nav className="cal-day-tabs">
-        <button type="button" className={`cal-day-tab ${activeDay === 'late' ? 'active' : ''}`} onClick={() => setActiveDay('late')}>
-          En retard <span className="badge">{late.length}</span>
-        </button>
-        {days.map((day) => (
-          <button
-            key={day}
-            type="button"
-            className={`cal-day-tab ${activeDay === day ? 'active' : ''} ${day === today ? 'is-today' : ''}`}
-            onClick={() => setActiveDay(day)}
-          >
-            {dayName(day).slice(0, 3)} {dayNumber(day)} <span className="badge">{(byDay.get(day) || []).length}</span>
-          </button>
-        ))}
-        {weekendCards.length > 0 && (
-          <button
-            type="button"
-            className={`cal-day-tab ${activeDay === 'weekend' ? 'active' : ''}`}
-            onClick={() => { setActiveDay('weekend'); setWeekendOpen(true) }}
-          >
-            Week-end <span className="badge">{weekendCards.length}</span>
-          </button>
-        )}
-      </nav>
-
-      <div className="cal-grid">
+      <div className="cal-body">
         <section
-          className={`cal-col cal-late ${dragOver === 'late' ? 'over' : ''}`}
-          data-day="late"
-          data-active={String(activeDay === 'late')}
-          {...dropProps('late', today)}
+          className={`today-col ${dragOver === 'today' ? 'over' : ''}`}
+          {...dropProps('today', today)}
         >
           <h2 className="cal-col-title">
-            En retard <span className="badge">{late.length}</span>
+            À faire aujourd'hui <span className="badge">{late.length + todayDeals.length}</span>
           </h2>
-          <div className="cal-col-cards">
-            {late.length === 0 && <p className="column-empty">Rien en retard</p>}
+          <div className="today-cards">
+            {late.length + todayDeals.length === 0 && <p className="column-empty">Rien à faire aujourd'hui.</p>}
             {late.map((deal) => (
               <DealCard key={deal.id} deal={deal} onOpen={onOpen} lateDays={daysBetween(deal.nextActionDate, today)} />
             ))}
+            {todayDeals.map((deal) => <DealCard key={deal.id} deal={deal} onOpen={onOpen} />)}
           </div>
         </section>
 
-        {days.map((day) => {
-          const list = byDay.get(day) || []
-          return (
-            <section
-              key={day}
-              className={`cal-col ${day === today ? 'is-today' : ''} ${dragOver === day ? 'over' : ''}`}
-              data-day={day}
-              data-active={String(activeDay === day)}
-              {...dropProps(day, day)}
-            >
-              <h2 className="cal-col-title">
-                <span className="cal-day-name">{dayName(day)}</span>
-                <span className="cal-day-num">{dayNumber(day)}</span>
-                <span className="badge">{list.length}</span>
-              </h2>
-              <div className="cal-col-cards">
-                {list.length === 0 && <p className="column-empty">Vide</p>}
-                {list.map((deal) => <DealCard key={deal.id} deal={deal} onOpen={onOpen} />)}
+        <div className="month-grid">
+          <div className="month-head">
+            {['lun', 'mar', 'mer', 'jeu', 'ven', 'sam', 'dim'].map((d) => <span key={d}>{d}</span>)}
+          </div>
+          <div className="month-weeks">
+            {weeks.map((week) => (
+              <div className="month-week" key={week[0]}>
+                {week.map((day) => {
+                  const list = byDay.get(day) || []
+                  const shown = list.slice(0, CARDS_PER_DAY)
+                  const rest = list.length - shown.length
+                  return (
+                    <div
+                      key={day}
+                      className={[
+                        'month-day',
+                        day === today ? 'is-today' : '',
+                        sameMonth(day, monthStart) ? '' : 'other-month',
+                        dragOver === day ? 'over' : '',
+                      ].join(' ').trim()}
+                      {...dropProps(day, day)}
+                      onClick={() => list.length > 0 && setDayModal(day)}
+                      role={list.length > 0 ? 'button' : undefined}
+                      tabIndex={list.length > 0 ? 0 : undefined}
+                      onKeyDown={(e) => { if (list.length > 0 && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); setDayModal(day) } }}
+                    >
+                      <span className="month-day-num">{dayNumber(day)}</span>
+                      {shown.map((deal) => <CompactCard key={deal.id} deal={deal} />)}
+                      {rest > 0 && <span className="month-day-more">+{rest}</span>}
+                    </div>
+                  )
+                })}
               </div>
-            </section>
-          )
-        })}
+            ))}
+          </div>
+        </div>
 
-        {weekendCards.length > 0 && (
-          <section
-            className={`cal-col cal-weekend ${weekendOpen ? 'open' : ''}`}
-            data-day="weekend"
-            data-active={String(activeDay === 'weekend')}
-          >
-            <button type="button" className="cal-col-title cal-weekend-toggle" onClick={() => setWeekendOpen((v) => !v)}>
-              Week-end <span className="badge">{weekendCards.length}</span>
-              <span className="cal-weekend-chevron">{weekendOpen ? '▾' : '▸'}</span>
-            </button>
-            {weekendOpen && (
-              <div className="cal-col-cards">
-                {weekendDays.map((day) =>
-                  (byDay.get(day) || []).map((deal) => (
-                    <DealCard key={deal.id} deal={deal} onOpen={onOpen} dayHint={`${dayName(day)} ${dayNumber(day)}`} />
-                  ))
-                )}
-              </div>
-            )}
-          </section>
-        )}
+        <section className="day-view">
+          <div className="day-view-nav">
+            <button type="button" className="btn ghost" onClick={() => setDayCursor(addDays(dayCursor, -1))} aria-label="Jour précédent">←</button>
+            <span className="day-view-label">{dayName(dayCursor)} {dayNumber(dayCursor)}</span>
+            <button type="button" className="btn ghost" onClick={() => setDayCursor(addDays(dayCursor, 1))} aria-label="Jour suivant">→</button>
+          </div>
+          <div className="today-cards">
+            {cursorDeals.length === 0 && <p className="column-empty">Rien ce jour-là.</p>}
+            {cursorDeals.map((deal) => <DealCard key={deal.id} deal={deal} onOpen={onOpen} />)}
+          </div>
+        </section>
       </div>
 
-      <section
-        className={`cal-backlog ${dragOver === 'backlog' ? 'over' : ''}`}
-        {...dropProps('backlog', '')}
-      >
-        <h2 className="cal-col-title">
-          À planifier <span className="badge">{unplanned.length}</span>
-        </h2>
-        <div className="backlog-cards">
-          {unplanned.length === 0 && <p className="column-empty">Tous les deals en cours ont une date.</p>}
-          {unplanned.map((deal) => <DealCard key={deal.id} deal={deal} onOpen={onOpen} />)}
+      {dayModal && (
+        <div className="modal-overlay" onClick={() => setDayModal(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h2>{dayName(dayModal)} {dayNumber(dayModal)} {monthLabel(monthKey(dayModal))}</h2>
+            <p className="modal-sub">{(byDay.get(dayModal) || []).length} deal(s) à traiter ce jour-là.</p>
+            <div className="today-cards day-modal-cards">
+              {(byDay.get(dayModal) || []).map((deal) => (
+                <DealCard key={deal.id} deal={deal} onOpen={(id) => { setDayModal(null); onOpen(id) }} />
+              ))}
+            </div>
+            <div className="form-actions">
+              <button type="button" className="btn ghost" onClick={() => setDayModal(null)}>Fermer</button>
+            </div>
+          </div>
         </div>
-      </section>
+      )}
     </div>
   )
 }
 
-// Carte compacte : agence, étiquette, montant, chaleur, initiale du closer,
-// heure s'il y en a une. Le détail complet est dans le panneau latéral.
-export function DealCard({ deal, onOpen, lateDays, dayHint }) {
+// Carte compacte du calendrier : juste de quoi reconnaître le deal d'un coup
+// d'œil. Le détail est dans « À faire aujourd'hui » et dans la fiche.
+function CompactCard({ deal }) {
+  return (
+    <span
+      className={`compact-card heat-${deal.heat}`}
+      draggable
+      title={`${deal.agence} — ${deal.state} — ${heatLabel(deal.heat)}`}
+      onDragStart={(e) => {
+        e.stopPropagation()
+        e.dataTransfer.setData('text/plain', deal.id)
+        e.dataTransfer.effectAllowed = 'move'
+      }}
+    >
+      <span className="deal-heat" aria-hidden="true" />
+      <span className="compact-agence">{deal.agence}</span>
+    </span>
+  )
+}
+
+// Carte complète : agence, étiquette, montant, chaleur, initiale du closer,
+// heure s'il y en a une, et le retard éventuel.
+export function DealCard({ deal, onOpen, lateDays }) {
   const total = dealTotal(deal)
   return (
     <article
-      className={`deal-card heat-${deal.heat}`}
+      className={`deal-card heat-${deal.heat} ${lateDays > 0 ? 'is-late' : ''}`}
       draggable
       onDragStart={(e) => {
         e.dataTransfer.setData('text/plain', deal.id)
@@ -491,11 +498,10 @@ export function DealCard({ deal, onOpen, lateDays, dayHint }) {
         </span>
       </div>
       <div className="deal-card-bottom">
+        {lateDays > 0 && <span className="late-badge">En retard de {lateDays} j</span>}
         <span className="deal-state">{deal.state}</span>
         {total > 0 && <span className="deal-amount">{formatEuros(total)}</span>}
         {deal.nextActionTime && <span className="deal-time">{deal.nextActionTime}</span>}
-        {dayHint && <span className="deal-time">{dayHint}</span>}
-        {lateDays > 0 && <span className="deal-late">{lateDays} j de retard</span>}
       </div>
     </article>
   )

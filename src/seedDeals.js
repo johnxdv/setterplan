@@ -10,9 +10,11 @@ export const SEED_SOURCE = 'Importé depuis le Google Sheet SUIVI DEAL'
 
 // agence, closer, state, heat, montants, date de prochaine action, note.
 // La note du Sheet devient la prochaine action : c'est ce qu'il reste à faire.
+// La date est obligatoire pour un deal en cours : les lignes « à planifier »
+// du Sheet sont datées du jour de la reprise.
 const OPEN_DEALS = [
   ['hp-properties', 'HP Properties', 'Benjamin', 'Passage en agence', 'tiede',
-    { amountSoftware: 7900 }, '', '', 'Passer en agence début janvier'],
+    { amountSoftware: 7900 }, '2026-10-09', '', 'Passer en agence début janvier'],
   ['barnes', 'Barnes', UNASSIGNED, 'Appel à faire', 'tiede',
     { amountSoftware: 8900 }, '2026-10-03', '', 'Envoyer un vocal, proposer un 2e RDV si besoin'],
   ['nesta-immobilier', 'Nesta Immobilier', 'Alice', 'Appel à faire', 'tiede',
@@ -28,7 +30,7 @@ const OPEN_DEALS = [
     { amountSoftware: 3900, amountSite: 1000 }, '2026-11-02', '',
     'Intérêt estimé à 70 %, RDV début novembre ; prospect sceptique après une mauvaise expérience passée, venir avec des preuves et des réponses aux objections'],
   ['buddys-immobilier', 'Buddys Immobilier', 'Benjamin', 'Appel à faire', 'tiede',
-    {}, '', '', 'À rappeler au plus vite'],
+    {}, '2026-10-09', '', 'À rappeler au plus vite'],
   ['agence-des-cordeliers', 'Agence des Cordeliers', 'Armen', 'Appel à faire', 'tiede',
     { amountSoftware: 3900, amountSite: 1900 }, '2026-10-05', '', 'À rappeler en urgence'],
   ['destination-riviera', 'Destination Riviera', 'Nadège', 'Appel à faire', 'tiede',
@@ -53,7 +55,7 @@ const OPEN_DEALS = [
     { amountSoftware: 3900, amountSite: 1900 }, '2026-10-16', '',
     'Mail envoyé, viser un RDV début novembre avec des preuves'],
   ['samir', 'Samir', UNASSIGNED, 'Appel à faire', 'tiede',
-    {}, '', '', 'Agence à préciser, à rappeler'],
+    {}, '2026-10-09', '', 'Agence à préciser, à rappeler'],
 ]
 
 // agence, closer, statut, montants, date de clôture, motif de perte, note.

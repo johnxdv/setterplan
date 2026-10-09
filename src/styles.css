@@ -904,23 +904,6 @@ body::before {
 
 .closing { gap: 10px; }
 
-.author-picker {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  color: var(--muted);
-}
-.author-picker select {
-  font: inherit;
-  font-size: 13px;
-  padding: 5px 8px;
-  border-radius: 8px;
-  border: 1px solid var(--line);
-  background: var(--surface-2);
-  color: var(--ink);
-}
-
 /* Bandeau de chiffres */
 .stats-band {
   flex: none;
@@ -980,18 +963,18 @@ body::before {
   color: var(--ink);
 }
 
-.cal-day-tabs { display: none; }
 
-.cal-grid {
+.cal-body {
   flex: 1;
   min-height: 0;
   display: flex;
   gap: 10px;
-  overflow-x: auto;
 }
-.cal-col {
-  flex: 1 1 0;
-  min-width: 170px;
+
+/* Colonne de gauche : ce qu'il y a à traiter aujourd'hui, cartes complètes,
+   les retards en tête. */
+.today-col {
+  flex: 0 0 260px;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -1000,23 +983,15 @@ body::before {
   border: 1px solid var(--line);
   background: var(--surface);
 }
-.cal-col.over { background: #1e2740; border-style: dashed; }
-.cal-col.is-today { border-color: #3b6fe0; background: #17203a; }
-.cal-late { flex: 0 0 210px; border-color: #ef444455; background: #1b1526; }
-.cal-weekend { flex: 0 0 150px; background: #121829; }
-.cal-weekend.open { flex: 1 1 0; }
-.cal-weekend-toggle {
-  font: inherit;
-  width: 100%;
-  text-align: left;
-  background: none;
-  border: 0;
-  color: inherit;
-  cursor: pointer;
-  padding: 0;
+.today-col.over { background: #1e2740; border-style: dashed; }
+.today-cards {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
-.cal-weekend-chevron { float: right; color: var(--muted); }
-
 .cal-col-title {
   flex: none;
   margin: 0 0 8px;
@@ -1028,30 +1003,70 @@ body::before {
   align-items: baseline;
   gap: 6px;
 }
-.cal-late .cal-col-title { color: #fca5a5; }
-.cal-day-name { text-transform: capitalize; }
-.cal-day-num { font-size: 16px; font-weight: 700; color: var(--ink); }
-.cal-col-cards, .backlog-cards {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.cal-backlog {
+.cal-month-label { text-transform: capitalize; font-size: 15px; color: var(--ink); font-weight: 600; }
+
+/* Grille du mois : 7 colonnes, lundi -> dimanche. */
+.month-grid { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.month-head {
   flex: none;
-  max-height: 26vh;
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+  padding: 0 2px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--muted);
+}
+.month-weeks { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 6px; }
+.month-week { flex: 1; min-height: 74px; display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+.month-day {
   display: flex;
   flex-direction: column;
-  padding: 10px;
-  border-radius: 12px;
-  border: 1px dashed var(--line);
+  gap: 3px;
+  min-width: 0;
+  overflow: hidden;
+  padding: 5px 6px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
   background: var(--surface);
 }
-.cal-backlog.over { background: #1e2740; border-color: #3b6fe0; }
-.cal-backlog .backlog-cards { flex-direction: row; flex-wrap: wrap; overflow-y: auto; }
-.cal-backlog .deal-card { width: min(240px, 100%); }
+.month-day.other-month { opacity: .45; }
+.month-day.is-today { border-color: #3b6fe0; background: #17203a; }
+.month-day.over { background: #1e2740; border-style: dashed; }
+.month-day[role="button"] { cursor: pointer; }
+.month-day[role="button"]:hover { border-color: #3b6fe0; }
+.month-day-num { font-size: 12px; font-weight: 700; color: var(--muted); }
+.month-day.is-today .month-day-num { color: #7dabff; }
+.month-day-more { font-size: 11px; color: #7dabff; }
+
+/* Carte compacte du mois : nom de l'agence et pastille de chaleur. */
+.compact-card {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 2px 5px;
+  border-radius: 6px;
+  border-left: 3px solid var(--line);
+  background: var(--surface-2);
+  font-size: 11px;
+  cursor: grab;
+}
+.compact-card.heat-froid { border-left-color: #60a5fa; }
+.compact-card.heat-tiede { border-left-color: #fbbf24; }
+.compact-card.heat-chaud { border-left-color: #fb923c; }
+.compact-card.heat-fire  { border-left-color: #ef4444; }
+.compact-agence { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Vue jour : téléphone uniquement (voir la media query plus bas). */
+.day-view { display: none; flex-direction: column; min-height: 0; }
+.day-view-nav { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.day-view-label { text-transform: capitalize; font-weight: 600; }
+.day-modal-cards { max-height: 50vh; }
+
+.late-badge { padding: 2px 6px; border-radius: 6px; background: #b91c1c; color: #fff; font-weight: 700; }
+.deal-card.is-late { border-color: #ef444455; }
 
 /* Carte de deal */
 .deal-card {
@@ -1258,34 +1273,10 @@ body::before {
   .stats-band { grid-template-columns: repeat(2, 1fr); }
   .stat-value { font-size: 18px; }
 
-  /* Vue jour : « En retard » en premier onglet, puis un jour à la fois. */
-  .cal-day-tabs {
-    display: flex;
-    gap: 6px;
-    overflow-x: auto;
-    padding-bottom: 2px;
-  }
-  .cal-day-tab {
-    font: inherit;
-    font-size: 13px;
-    white-space: nowrap;
-    padding: 6px 10px;
-    border-radius: 999px;
-    border: 1px solid var(--line);
-    background: var(--surface);
-    color: var(--muted);
-    cursor: pointer;
-    text-transform: capitalize;
-  }
-  .cal-day-tab.active { background: #3b6fe0; border-color: #3b6fe0; color: #fff; }
-  .cal-day-tab.is-today { border-color: #3b6fe0; }
-
-  /* Un seul jour affiché à la fois : la colonne active est désignée par
-     data-active, calculé côté React (une égalité entre deux valeurs
-     dynamiques ne s'exprime pas en CSS). */
-  .cal-grid { display: block; overflow-x: visible; }
-  .cal-col { display: none; min-width: 0; margin-bottom: 10px; }
-  .cal-col[data-active="true"] { display: flex; }
-  .cal-weekend { flex: none; }
-  .cal-backlog { max-height: none; }
+  /* Vue jour : la grille du mois n'est pas lisible sur un téléphone. */
+  .cal-body { flex-direction: column; overflow-y: auto; }
+  .today-col { flex: none; }
+  .today-cards { overflow-y: visible; }
+  .month-grid { display: none; }
+  .day-view { display: flex; }
 }

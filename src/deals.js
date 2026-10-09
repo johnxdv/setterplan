@@ -123,6 +123,22 @@ export function nextMonday(iso) {
   return toIso(d)
 }
 
+// Premier jour du mois, et déplacement de mois à mois sans déborder (le
+// 31 mars moins un mois donne le 1er février, pas le 3 mars).
+export function startOfMonth(iso) {
+  const d = fromIso(iso)
+  if (!d) return ''
+  return toIso(new Date(d.getFullYear(), d.getMonth(), 1))
+}
+
+export function addMonths(iso, months) {
+  const d = fromIso(iso)
+  if (!d) return ''
+  return toIso(new Date(d.getFullYear(), d.getMonth() + months, 1))
+}
+
+export const sameMonth = (a, b) => monthKey(a) === monthKey(b)
+
 export const isWeekend = (iso) => {
   const d = fromIso(iso)
   return d ? d.getDay() === 0 || d.getDay() === 6 : false
@@ -159,8 +175,13 @@ export function formatEuros(amount) {
 let counter = 0
 export const newDealId = () => `d${Date.now().toString(36)}-${(counter++).toString(36)}`
 
+// Auteur d'une ligne d'historique : le closer qui suit le deal. Un deal sans
+// closer est le fait de l'équipe — on n'invente pas un responsable.
+export const TEAM_AUTHOR = 'Équipe'
+export const dealAuthor = (deal) => (!deal?.closer || deal.closer === UNASSIGNED ? TEAM_AUTHOR : deal.closer)
+
 export function historyEntry(author, note) {
-  return { at: new Date().toISOString(), author: author || UNASSIGNED, note }
+  return { at: new Date().toISOString(), author: author || TEAM_AUTHOR, note }
 }
 
 // Un deal complet, champs par défaut compris : tout le reste du code peut
@@ -240,19 +261,22 @@ export function sanitizeDeal(raw, id) {
 
 export const isOpen = (deal) => deal.status === STATUS_OPEN
 export const isLate = (deal, today) => isOpen(deal) && deal.nextActionDate !== '' && deal.nextActionDate < today
+// Un deal en cours sans date n'existe plus que le temps d'être rattrapé : la
+// date de prochaine action est obligatoire (voir planMissingDates).
 export const isUnplanned = (deal) => isOpen(deal) && deal.nextActionDate === ''
 
 // Bandeau de chiffres du haut.
 export function pipelineStats(deals, today) {
   const open = deals.filter(isOpen)
+  const won = deals.filter((d) => d.status === STATUS_WON)
   const month = monthKey(today)
   return {
     openCount: open.length,
     pipe: open.reduce((sum, d) => sum + dealTotal(d), 0),
     weighted: open.reduce((sum, d) => sum + weightedValue(d), 0),
-    signedThisMonth: deals
-      .filter((d) => d.status === STATUS_WON && monthKey(d.closedAt) === month)
+    signedTotal: won.reduce((sum, d) => sum + dealTotal(d), 0),
+    signedThisMonth: won
+      .filter((d) => monthKey(d.closedAt) === month)
       .reduce((sum, d) => sum + dealTotal(d), 0),
-    lateCount: open.filter((d) => isLate(d, today)).length,
   }
 }

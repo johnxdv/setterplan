@@ -29,7 +29,7 @@ const euros = (value) => {
 // Panneau latéral : toute la fiche, modifiable, et l'historique complet.
 // Les champs texte s'enregistrent en quittant le champ, les listes au choix :
 // on n'écrit pas dans Firestore à chaque frappe.
-export default function DealPanel({ deal, author, today, onClose, onPersist, onPersistWithHistory }) {
+export default function DealPanel({ deal, today, onClose, onPersist, onPersistWithHistory }) {
   const [draft, setDraft] = useState(deal)
   const [modal, setModal] = useState(null) // done | won | lost
 
@@ -87,8 +87,8 @@ export default function DealPanel({ deal, author, today, onClose, onPersist, onP
               type="button"
               className="btn"
               onClick={() => onPersistWithHistory(
-                { ...draft, status: STATUS_OPEN, lossReason: '', closedAt: '' },
-                'Deal rouvert'
+                { ...draft, status: STATUS_OPEN, lossReason: '', closedAt: '', nextActionDate: today },
+                'Deal rouvert, prochaine action fixée à aujourd\'hui'
               )}
             >
               Rouvrir le deal
@@ -355,7 +355,7 @@ function DoneModal({ deal, today, onCancel, onConfirm }) {
         ))}
       </div>
       <div className="field-row">
-        <Field label="Date de la prochaine action">
+        <Field label="Date de la prochaine action (obligatoire)">
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
         </Field>
         <Field label="Heure (facultative)">
@@ -367,7 +367,7 @@ function DoneModal({ deal, today, onCancel, onConfirm }) {
         <button
           type="button"
           className="btn primary"
-          disabled={!note.trim()}
+          disabled={!note.trim() || !date}
           onClick={() => onConfirm({ note: note.trim(), state, date, time, label: label.trim() })}
         >
           Enregistrer
@@ -516,7 +516,7 @@ export function NewDealModal({ onCancel, onCreate }) {
       <Field label="Prochaine action">
         <input type="text" value={form.nextActionLabel} onChange={(e) => set({ nextActionLabel: e.target.value })} placeholder="Ex. appeler pour fixer un RDV" />
       </Field>
-      <Field label="Date de la prochaine action">
+      <Field label="Date de la prochaine action (obligatoire)">
         <input type="date" value={form.nextActionDate} onChange={(e) => set({ nextActionDate: e.target.value })} />
       </Field>
       <div className="form-actions">
@@ -524,7 +524,7 @@ export function NewDealModal({ onCancel, onCreate }) {
         <button
           type="button"
           className="btn primary"
-          disabled={!form.agence.trim()}
+          disabled={!form.agence.trim() || !form.nextActionDate}
           onClick={() => onCreate({ ...form, agence: form.agence.trim() })}
         >
           Créer la fiche
