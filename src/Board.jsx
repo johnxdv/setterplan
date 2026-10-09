@@ -5,6 +5,7 @@ import { boardRefFor } from './firebase.js'
 import { LEGACY_SPACE_ID } from './spaces.js'
 import { COLUMNS, COLUMN_IDS, FOLLOWUP_COLUMN_ID } from './columns.js'
 import { downloadContactsCsv } from './exportCsv.js'
+import { createDealFromCard } from './dealsStore.js'
 import {
   ALL_ZONES,
   UNKNOWN_ZONE_LABEL,
@@ -30,6 +31,10 @@ function readStoredZone(spaceId) {
     return null
   }
 }
+
+// Seule colonne d'où un contact part au closing : un rendez-vous booké est
+// exactement ce que le closer reprend.
+const CLOSING_SOURCE_COLUMN = 'booked'
 
 const normLabel = (s) =>
   s
@@ -116,6 +121,9 @@ function sanitize(raw) {
         followUpAt: typeof c.followUpAt === 'string' ? c.followUpAt : '',
         column: COLUMN_IDS.has(c.column) ? c.column : 'todo',
         classifiedAt: typeof c.classifiedAt === 'number' ? c.classifiedAt : 0,
+        // Trace du passage au closing : la carte reste dans sa colonne, on
+        // marque seulement qu'un deal a été créé à partir d'elle.
+        sentToClosing: c.sentToClosing === true,
       }
     })
 }
@@ -308,6 +316,24 @@ export default function Board({ space, onBack }) {
       classifiedAt: 0,
     }
     persist([...cardsRef.current, card])
+  }
+
+  // Passage au closing : crée une fiche dans la collection « deals » et
+  // marque la carte. Le contact du setter n'est ni déplacé ni supprimé.
+  async function sendToClosing(card) {
+    if (card.sentToClosing) return
+    setError('')
+    try {
+      await createDealFromCard(card, space.name)
+      persist(cardsRef.current.map((c) => (c.id === card.id ? { ...c, sentToClosing: true } : c)))
+      setNotice(`${card.company} envoyé au closing.`)
+    } catch (err) {
+      setError(
+        err?.code === 'permission-denied'
+          ? "Firestore refuse l'écriture dans « deals » : déployez les règles mises à jour."
+          : "Impossible d'envoyer ce contact au closing."
+      )
+    }
   }
 
   // Seules les 5 colonnes fixes sont des zones de dépôt : « À appeler » ne
@@ -555,6 +581,7 @@ export default function Board({ space, onBack }) {
               onSetNote={setNote}
               onSetFollowUp={setFollowUp}
               onMoveCard={moveCard}
+              onSendToClosing={sendToClosing}
               matchedIds={matchedIds}
             />
           </main>
@@ -978,7 +1005,7 @@ function TodoList({ cards, cities, cityZones, zone, cityFilter, onCityFilterChan
 // catégories fixes : liste compacte (entreprise, gérant, téléphone) qui se
 // déplie au clic pour révéler le détail et la note. Seul le conteneur qui
 // l'accueille (et donc la colonne de destination au drop) change.
-function ContactRow({ card, onToggleStar, onToggleCalled, onSetNote, onMoveCard, onSetFollowUp, highlighted }) {
+function ContactRow({ card, onToggleStar, onToggleCalled, onSetNote, onMoveCard, onSetFollowUp, onSendToClosing, highlighted }) {
   const [expanded, setExpanded] = useState(false)
   const [moveMenuOpen, setMoveMenuOpen] = useState(false)
   const hasDetail = card.address || card.ville || card.website || card.extras.length > 0
@@ -1067,6 +1094,19 @@ function ContactRow({ card, onToggleStar, onToggleCalled, onSetNote, onMoveCard,
         </span>
       </div>
       {onSetFollowUp && <FollowUpField card={card} onSetFollowUp={onSetFollowUp} />}
+      {onSendToClosing && (
+        card.sentToClosing ? (
+          <span className="sent-to-closing">Envoyé au closing</span>
+        ) : (
+          <button
+            type="button"
+            className="send-closing-btn"
+            onClick={(e) => { e.stopPropagation(); onSendToClosing(card) }}
+          >
+            Envoyer au closing
+          </button>
+        )
+      )}
       {expanded && (
         <div className="contact-detail">
           {card.address && <DetailRow label="Adresse" value={card.address} />}
@@ -1088,7 +1128,7 @@ function ContactRow({ card, onToggleStar, onToggleCalled, onSetNote, onMoveCard,
 // Les 5 colonnes fixes : uniquement des zones de dépôt, ne bougent jamais.
 // Chaque contact y est affiché avec le même ContactRow que « À appeler » ;
 // on le reclasse par glisser-déposer d'une colonne à l'autre.
-function BoardColumns({ cards, dragOverId, setDragOverId, onDropTo, onToggleStar, onToggleCalled, onSetNote, onSetFollowUp, onMoveCard, matchedIds }) {
+function BoardColumns({ cards, dragOverId, setDragOverId, onDropTo, onToggleStar, onToggleCalled, onSetNote, onSetFollowUp, onMoveCard, onSendToClosing, matchedIds }) {
   return (
     <div className="board-columns">
       {COLUMNS.map((col) => {
@@ -1125,6 +1165,7 @@ function BoardColumns({ cards, dragOverId, setDragOverId, onDropTo, onToggleStar
                   onSetNote={onSetNote}
                   onMoveCard={onMoveCard}
                   onSetFollowUp={col.id === FOLLOWUP_COLUMN_ID ? onSetFollowUp : null}
+                  onSendToClosing={col.id === CLOSING_SOURCE_COLUMN ? onSendToClosing : null}
                   highlighted={matchedIds?.has(card.id)}
                 />
               ))}

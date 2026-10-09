@@ -18,5 +18,15 @@ service cloud.firestore {
     match /board/{spaceId} {
       allow read, write: if true;
     }
+
+    // Espace de closing : un document par deal (deals/<id>), plus
+    // meta/closingSeed, le marqueur qui empêche l'import du Google Sheet
+    // SUIVI DEAL de se rejouer à chaque ouverture.
+    match /deals/{dealId} {
+      allow read, write: if true;
+    }
+    match /meta/{docId} {
+      allow read, write: if true;
+    }
   }
 }
